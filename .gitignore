@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual Environment
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Project specific
+input/*.xlsx
+input/*.xls
+input/*.csv
+output/*.xlsx
+output/query_ids/*.txt
+output/query_ids/*.sql
+
+# Keep structure files
+!input/README.txt
+!output/README.txt
+
+# Excel temp files
+~$*.xlsx
+~$*.xls
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+
+# Sensitive - API Keys and Credentials
+redash_config.py
+.env
+*.key
+
+# Test files
+test_redash.py

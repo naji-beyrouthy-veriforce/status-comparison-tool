@@ -1,228 +1,181 @@
 """
 Dynamics 365 vs SafeContractor Status Comparison
 Automates ID extraction and status comparison reporting
+
+Main business logic module - handles ID extraction and comparison generation.
+Uses centralized configuration from config.py and utilities from utils.py
 """
 
 import pandas as pd
-import re
+import warnings
+import sys
+import time
+from datetime import datetime
 from pathlib import Path
 from openpyxl import Workbook
 from openpyxl.utils.dataframe import dataframe_to_rows
-from openpyxl.styles import Font, PatternFill
-import warnings
+
+# Configure stdout encoding for Windows console compatibility
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except (AttributeError, OSError):
+        pass  # Python < 3.7 or already configured
 
 # Suppress openpyxl style warnings
-warnings.filterwarnings('ignore', category=UserWarning, module='openpyxl')
+warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
 
-# Configuration
-BASE_DIR = Path(__file__).parent
-INPUT_DIR = BASE_DIR / "input"
-OUTPUT_DIR = BASE_DIR / "output"
+# Import configuration
+from config import (
+    INPUT_DIR,
+    OUTPUT_DIR,
+    DYNAMICS_DIR,
+    REDASH_DIR,
+    QUERY_IDS_DIR,
+    D365_PATTERNS,
+    SC_PATTERNS,
+    D365_FILES,
+    SC_FILES,
+    REPORT_TYPES,
+    MAX_FILE_SAVE_RETRIES,
+    FILE_SAVE_RETRY_DELAY_SECONDS,
+    CLIENT_STATUS_COLUMN,
+    Messages,
+)
 
-# Compiled regex for UUID matching (performance optimization)
-UUID_PATTERN = re.compile(r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}')
-
-# Header formatting constants (created once for reuse)
-HIGHLIGHT_HEADERS = frozenset(['global_alcumus_id', 'global alcumus id', 'status', 'd365 status', 
-                               'is it the same?', 'sc status', 'status reason', 'case'])
-HEADER_FILL = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid")
-HEADER_FONT = Font(bold=True, color="000000")
-
-# File search patterns (case-insensitive keyword matching)
-D365_PATTERNS = {
-    "accreditation": "accreditation",
-    "wcb": "wcb",
-    "client": ["client", "cs"]  # CS or Client Specific
-}
-
-SC_PATTERNS = {
-    "accreditation": "accreditation",
-    "wcb": "wcb",
-    "client": ["client", "cs"]
-}
-
-# For backwards compatibility
-D365_FILES = {
-    "accreditation": "accreditation_d365.xlsx",
-    "wcb": "wcb_d365.xlsx",
-    "client": "client_d365.xlsx"
-}
-
-SC_FILES = {
-    "accreditation": "accreditation_sc.xlsx",
-    "wcb": "wcb_sc.xlsx",
-    "client": "client_sc.xlsx"
-}
-
-
-def find_file_by_pattern(directory, patterns, file_suffix=""):
-    """
-    Find file in directory matching pattern keywords.
-    patterns can be a string or list of strings to match.
-    file_suffix can be '_d365' or '_sc' to help differentiate.
-    """
-    if not directory.exists():
-        return None
-    
-    # Convert single pattern to list and pre-lowercase
-    patterns_lower = [patterns.lower()] if isinstance(patterns, str) else [p.lower() for p in patterns]
-    suffix_lower = file_suffix.lower() if file_suffix else None
-    allowed_extensions = {'.xlsx', '.xls', '.csv'}
-    
-    # Single pass: collect matches and prioritize those with suffix
-    best_match = None
-    
-    for file in directory.iterdir():
-        if not file.is_file() or file.suffix not in allowed_extensions:
-            continue
-        
-        filename_lower = file.name.lower()
-        
-        # Check if any pattern matches
-        if any(pattern in filename_lower for pattern in patterns_lower):
-            # If suffix specified and matches, return immediately (best match)
-            if suffix_lower and suffix_lower in filename_lower:
-                return file
-            # Otherwise, keep as backup match
-            if not best_match:
-                best_match = file
-    
-    return best_match
-
-
-def clean_uuid(value):
-    """
-    Extract UUID from text using compiled regex pattern.
-    Example: 'baa140f6-0511-4819-966b-5d33c2ce7e5a CAS-39866' -> 'baa140f6-0511-4819-966b-5d33c2ce7e5a'
-    """
-    if pd.isna(value):
-        return None
-    
-    match = UUID_PATTERN.search(str(value))
-    return match.group(0).lower() if match else None
-
-
-def format_ids_for_sql(ids):
-    """
-    Format cleaned IDs for SQL IN clause.
-    Returns: 'id1',\n'id2',\n'id3' (one per line, no trailing comma)
-    """
-    # Filter out None/empty and format directly (assuming ids already unique)
-    return ',\n'.join(f"'{id}'" for id in sorted(ids) if id)
-
-
-def find_column_by_keywords(columns, *keyword_groups):
-    """
-    Find a column name that contains keywords from any of the provided keyword groups.
-    
-    Args:
-        columns: List or Index of column names to search
-        *keyword_groups: Variable number of tuples, where each tuple contains keywords to match.
-                        A column matches if it contains ALL keywords from ANY group.
-    
-    Returns:
-        str: The first matching column name, or None if no match found
-    
-    Example:
-        find_column_by_keywords(df.columns, ('global', 'alcumus', 'id'))
-        # Returns column containing 'global' AND 'alcumus' AND 'id'
-    """
-    # Pre-lowercase all keywords for efficiency
-    keyword_groups_lower = [tuple(kw.lower() for kw in group) for group in keyword_groups]
-    
-    for col in columns:
-        col_lower = col.lower()
-        # Check each keyword group
-        for keyword_group in keyword_groups_lower:
-            # Check if ALL keywords in this group are present in the column name
-            if all(keyword in col_lower for keyword in keyword_group):
-                return col
-    return None
-
-
-def apply_header_formatting(worksheet, highlight_headers=None):
-    """
-    Apply red fill and black bold text to specified headers.
-    Args:
-        worksheet: openpyxl worksheet
-        highlight_headers: Set/list of header names to highlight (case-insensitive)
-    """
-    if highlight_headers is None:
-        highlight_headers = HIGHLIGHT_HEADERS
-    
-    for col_idx in range(1, worksheet.max_column + 1):
-        header_value = worksheet.cell(1, col_idx).value
-        if header_value and header_value.lower() in highlight_headers:
-            worksheet.cell(1, col_idx).fill = HEADER_FILL
-            worksheet.cell(1, col_idx).font = HEADER_FONT
-            worksheet.cell(1, col_idx).fill = HEADER_FILL
-            worksheet.cell(1, col_idx).font = HEADER_FONT
+# Import utility functions
+from utils import (
+    clean_uuid,
+    format_ids_for_sql,
+    find_column_by_keywords,
+    find_file_by_pattern,
+    validate_file_format,
+    validate_dataframe,
+    apply_header_formatting,
+    safe_read_excel,
+    validate_uuid_data,
+    check_file_accessibility,
+)
 
 
 def extract_and_save_ids():
     """
     Step 1: Extract IDs from D365 files and save SQL-ready lists
     """
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("STEP 1: EXTRACTING IDs FROM D365 FILES")
-    print("="*70)
-    
+    print("=" * 70)
+
     # Process Accreditation and WCB only (Client doesn't need ID extraction)
     for report_type in ["accreditation", "wcb"]:
-        print(f"\n▶ Processing {report_type.upper()}...")
-        
+        print(Messages.processing(report_type))
+
         # Find D365 file by pattern in dynamics subdirectory
-        dynamics_dir = INPUT_DIR / "dynamics"
-        file_path = find_file_by_pattern(dynamics_dir, D365_PATTERNS[report_type], "d365")
+        file_path = find_file_by_pattern(DYNAMICS_DIR, D365_PATTERNS[report_type], "d365")
         if not file_path:
             # Try without suffix requirement
-            file_path = find_file_by_pattern(dynamics_dir, D365_PATTERNS[report_type])
-        
+            file_path = find_file_by_pattern(DYNAMICS_DIR, D365_PATTERNS[report_type])
+
         if not file_path:
-            print(f"  ⚠ Warning: No D365 {report_type} file found, skipping...")
-            print(f"     Looking for files containing: {D365_PATTERNS[report_type]}")
+            print(Messages.warning(Messages.FILE_NOT_FOUND.format(report_type=report_type)))
+            print(f"     {Messages.LOOKING_FOR.format(patterns=D365_PATTERNS[report_type])}")
             continue
-        
-        df = pd.read_excel(file_path)
-        print(f"  ✓ Read {len(df)} rows from {file_path.name}")
-        
+
+        # Validate file format
+        is_valid, error_msg, suggested_fix = validate_file_format(file_path)
+        if not is_valid:
+            print(Messages.error(error_msg))
+            if suggested_fix:
+                print(Messages.suggestion(suggested_fix))
+            continue
+
+        # Read file with enhanced error handling
+        df, error_msg, suggested_fix = safe_read_excel(file_path)
+        if error_msg:
+            print(Messages.error(f"reading {file_path.name}: {error_msg}"))
+            if suggested_fix:
+                print(Messages.suggestion(suggested_fix))
+            continue
+
+        print(Messages.success(Messages.READ_ROWS.format(count=len(df), filename=file_path.name)))
+
+        # Validate DataFrame structure
+        is_valid, error_msg, suggested_fix = validate_dataframe(
+            df, file_path.name, [("global", "alcumus", "id")]
+        )
+        if not is_valid:
+            print(Messages.error(error_msg))
+            if suggested_fix:
+                print(Messages.suggestion(suggested_fix))
+            continue
+
         # Find Global Alcumus Id column
-        id_col = find_column_by_keywords(df.columns, ('global', 'alcumus', 'id'))
-        
+        id_col = find_column_by_keywords(df.columns, ("global", "alcumus", "id"))
+
         if not id_col:
-            print(f"  ❌ Error: 'Global Alcumus Id' column not found")
+            print(Messages.error(Messages.COLUMN_NOT_FOUND))
+            available = ", ".join([f"'{col}'" for col in df.columns])
+            print(f"     {Messages.AVAILABLE_COLUMNS.format(columns=available)}")
+            print(Messages.suggestion(Messages.ENSURE_EXPORT))
             continue
-        
+
+        # Validate UUID data quality
+        is_valid, msg, fix, uuid_stats = validate_uuid_data(df, id_col, file_path.name)
+        if not is_valid:
+            print(Messages.error(msg))
+            if fix:
+                print(Messages.suggestion(fix))
+            continue
+
+        # Show UUID statistics
+        print(
+            Messages.info(
+                Messages.UUID_QUALITY.format(
+                    valid=uuid_stats["valid_uuids"],
+                    total=uuid_stats["total"],
+                    null=uuid_stats["null"],
+                    invalid=uuid_stats["invalid"],
+                )
+            )
+        )
+
         # Extract and clean IDs using vectorized operation
         unique_ids = df[id_col].dropna().map(clean_uuid).dropna().unique()
         unique_ids = sorted(unique_ids)
-        
-        print(f"  ✓ Extracted and deduplicated {len(unique_ids)} unique IDs")
-        print(f"  📅 Using fresh IDs from today's D365 upload")
-        
+
+        # Final validation
+        if len(unique_ids) == 0:
+            print(Messages.error(Messages.NO_VALID_UUIDS.format(column=id_col)))
+            sample_values = df[id_col].head(3).tolist()
+            print(f"     {Messages.SAMPLE_VALUES.format(values=sample_values)}")
+            print(Messages.suggestion(Messages.CHECK_COLUMN))
+            continue
+
+        print(Messages.success(Messages.EXTRACTED_IDS.format(count=len(unique_ids))))
+        print(Messages.success(Messages.USING_FRESH_IDS))
+
         # Format for SQL
         sql_formatted = format_ids_for_sql(unique_ids)
-        
+
         # Save to file in query_ids subfolder
-        query_ids_dir = OUTPUT_DIR / "query_ids"
-        query_ids_dir.mkdir(exist_ok=True)
-        
-        output_file = query_ids_dir / f"{report_type}_ids.sql.txt"
-        
-        with open(output_file, 'w') as f:
+        QUERY_IDS_DIR.mkdir(exist_ok=True)
+
+        output_file = QUERY_IDS_DIR / f"{report_type}_ids.sql.txt"
+
+        with open(output_file, "w") as f:
             f.write(sql_formatted)
-        
-        print(f"  ✓ Saved to: {output_file.name}")
-        
+
+        print(Messages.success(Messages.SAVED_TO.format(filename=output_file.name)))
+
         # Show preview
-        lines = sql_formatted.split('\n')
-        print(f"  Preview (first 5 IDs):")
+        lines = sql_formatted.split("\n")
+        print(f"  {Messages.PREVIEW_HEADER}")
         for line in lines[:5]:
             print(f"    {line}")
         if len(lines) > 5:
-            print(f"    ... and {len(lines) - 5} more")
-    
-    print("\n" + "="*70)
+            print(f"    {Messages.AND_MORE.format(count=len(lines) - 5)}")
+
+    print("\n" + "=" * 70)
     print("✅ ID EXTRACTION COMPLETED!")
     print("")
     print("NEXT STEP (Manual Process):")
@@ -231,39 +184,76 @@ def extract_and_save_ids():
     print("3. Download SC results as accreditation_sc.xlsx, wcb_sc.xlsx, client_sc.xlsx")
     print("4. Place SafeContractor (Redash) files in input/redash/ folder")
     print("5. Run this script again to generate comparisons")
-    print("="*70 + "\n")
+    print("=" * 70 + "\n")
 
 
 def create_comparison_excel(report_type, df_d365, df_sc, include_qual_url=False):
     """
-    Create comparison Excel file with SC and D365 sheets
-    Uses pandas merge for status matching (no Excel formulas)
+    Create comparison Excel file with SC and D365 sheets.
+
+    COMPARISON LOGIC:
+    ========================================================
+    1. Two sheets created: "SC" sheet and "D365" sheet
+    2. Each sheet gets XLOOKUP formulas to pull status from the other sheet
+    3. "Is it the same?" column compares statuses:
+       - Accreditation/WCB: SC 'status' column vs D365 Status
+       - Client: SC 'case' column (which IS the status) vs D365 Status
+    4. Column placement varies by report type for readability:
+       - Client: Inserts comparison columns after 'case' column
+       - Accreditation/WCB: Appends comparison columns at the end
+
+    ⚠️ CRITICAL - DO NOT MODIFY CLIENT COMPARISON LOGIC:
+    The 'case' column in Client SafeContractor data IS the status column.
+    This is a business requirement from the Redash query structure.
+    Comparing 'case' vs D365 Status is CORRECT, not a bug!
+
+    Args:
+        report_type: Type of report (accreditation, wcb, or client)
+        df_d365: Dynamics 365 DataFrame
+        df_sc: SafeContractor DataFrame
+        include_qual_url: Whether to include qualification URL (for WCB)
+
+    Returns:
+        Path to created Excel file, or None if creation failed
     """
-    print(f"\n  📊 Creating comparison for {report_type}...")
-    print(f"     D365 rows: {len(df_d365)}, SC rows: {len(df_sc)}")
-    
+    print(
+        Messages.info(
+            Messages.CREATING_COMPARISON.format(report_type=report_type)
+        )
+    )
+    print(
+        f"     {Messages.ROW_COUNTS.format(d365_count=len(df_d365), sc_count=len(df_sc))}"
+    )
+
     # Find D365 columns using helper function
-    id_col_d365 = find_column_by_keywords(df_d365.columns, ('global', 'alcumus', 'id'))
-    status_col_d365 = find_column_by_keywords(df_d365.columns, ('status', 'reason'))
-    qual_url_col = find_column_by_keywords(df_d365.columns, ('qualification', 'url')) if include_qual_url else None
-    
+    id_col_d365 = find_column_by_keywords(df_d365.columns, ("global", "alcumus", "id"))
+    status_col_d365 = find_column_by_keywords(df_d365.columns, ("status", "reason"))
+    qual_url_col = (
+        find_column_by_keywords(df_d365.columns, ("qualification", "url"))
+        if include_qual_url
+        else None
+    )
+
     if not id_col_d365 or not status_col_d365:
-        print(f"     ❌ Missing required D365 columns")
+        print(f"     {Messages.MISSING_COLUMNS}")
         print(f"        ID column: {id_col_d365}")
         print(f"        Status column: {status_col_d365}")
         return None
-    
-    print(f"     D365 ID column: '{id_col_d365}'")
-    print(f"     D365 Status column: '{status_col_d365}'")
-    
+
+    print(f"     {Messages.COLUMN_INFO.format(id_col=id_col_d365)}")
+    print(f"     {Messages.STATUS_INFO.format(status_col=status_col_d365)}")
+
     # Find SC columns intelligently
-    id_col_sc = (find_column_by_keywords(df_sc.columns, ('global', 'alcumus', 'id'), ('id', 'alcumus')) 
-                 or df_sc.columns[0])
-    
+    id_col_sc = (
+        find_column_by_keywords(df_sc.columns, ("global", "alcumus", "id"), ("id", "alcumus"))
+        or df_sc.columns[0]
+    )
+
     # Find status column in SC data (any column with 'status' that isn't the ID column)
-    status_col_sc = next((col for col in df_sc.columns 
-                         if 'status' in col.lower() and col != id_col_sc), None)
-    
+    status_col_sc = next(
+        (col for col in df_sc.columns if "status" in col.lower() and col != id_col_sc), None
+    )
+
     # If status column not found by name, use the column after the ID column
     if not status_col_sc:
         id_col_index = df_sc.columns.get_loc(id_col_sc)
@@ -272,185 +262,280 @@ def create_comparison_excel(report_type, df_d365, df_sc, include_qual_url=False)
         else:
             # Fallback: look for a column with string data that might be status
             for col in df_sc.columns:
-                if col != id_col_sc and df_sc[col].dtype == 'object':
+                if col != id_col_sc and df_sc[col].dtype == "object":
                     status_col_sc = col
                     break
-    
+
     if not status_col_sc:
-        print(f"     ❌ Could not find status column in SC data")
+        print(f"     {Messages.STATUS_COLUMN_MISSING}")
         print(f"        Available columns: {list(df_sc.columns)}")
         return None
-    
+
     print(f"     SC ID column: '{id_col_sc}'")
     print(f"     SC Status column: '{status_col_sc}'")
-    
+
     # Clean IDs in both dataframes
-    df_d365['clean_id'] = df_d365[id_col_d365].apply(clean_uuid)
-    df_sc['clean_id'] = df_sc[id_col_sc].apply(clean_uuid)
-    
+    df_d365["clean_id"] = df_d365[id_col_d365].apply(clean_uuid)
+    df_sc["clean_id"] = df_sc[id_col_sc].apply(clean_uuid)
+
     # Verify cleaned IDs
-    d365_clean_count = df_d365['clean_id'].notna().sum()
-    sc_clean_count = df_sc['clean_id'].notna().sum()
+    d365_clean_count = df_d365["clean_id"].notna().sum()
+    sc_clean_count = df_sc["clean_id"].notna().sum()
     print(f"     D365 cleaned IDs: {d365_clean_count}/{len(df_d365)}")
     print(f"     SC cleaned IDs: {sc_clean_count}/{len(df_sc)}")
-    
+
     # Check for matches
-    common_ids = set(df_d365['clean_id'].dropna()) & set(df_sc['clean_id'].dropna())
+    common_ids = set(df_d365["clean_id"].dropna()) & set(df_sc["clean_id"].dropna())
     print(f"     Common IDs found: {len(common_ids)}")
-    
+
     if len(common_ids) == 0:
         print(f"     ⚠ WARNING: No matching IDs found between D365 and SC!")
         print(f"     Sample D365 IDs: {list(df_d365['clean_id'].dropna()[:3])}")
         print(f"     Sample SC IDs: {list(df_sc['clean_id'].dropna()[:3])}")
-    
+
+    # ============================================================================
+    # CRITICAL BUSINESS LOGIC - DO NOT MODIFY WITHOUT UNDERSTANDING:
+    # ============================================================================
+    # For CLIENT reports from SafeContractor Redash query:
+    #   - The 'case' column IS the status column for client-specific global IDs
+    #   - This is NOT the same as a regular 'status' column
+    #   - Comparison logic MUST use 'case' column for client reports
+    #
+    # For ACCREDITATION/WCB reports:
+    #   - The 'status' column is used normally
+    #
+    # This is the CORRECT behavior per business requirements.
+    # ============================================================================
+
     # ===== CREATE EXCEL FILE WITH TWO SHEETS AND XLOOKUP FORMULAS =====
     wb = Workbook()
     wb.remove(wb.active)
-    
+
     # ===== SC SHEET (CREATED FIRST) =====
     ws_sc = wb.create_sheet("SC")
-    
+
     # Write SC data (preserve original column order)
-    for r_idx, row in enumerate(dataframe_to_rows(df_sc.drop(columns=['clean_id']), index=False, header=True), 1):
+    for r_idx, row in enumerate(
+        dataframe_to_rows(df_sc.drop(columns=["clean_id"]), index=False, header=True), 1
+    ):
         for c_idx, value in enumerate(row, 1):
             ws_sc.cell(row=r_idx, column=c_idx, value=value)
-    
+
     # Find SC ID and Status column positions
-    sc_cols = list(df_sc.drop(columns=['clean_id']).columns)
+    sc_cols = list(df_sc.drop(columns=["clean_id"]).columns)
     sc_id_col_idx = sc_cols.index(id_col_sc) + 1
     sc_status_col_idx_orig = sc_cols.index(status_col_sc) + 1
     sc_id_col_letter = ws_sc.cell(1, sc_id_col_idx).column_letter
     sc_status_col_letter = ws_sc.cell(1, sc_status_col_idx_orig).column_letter
-    
-    # Determine where to insert new columns based on report type
+
+    # Determine where to insert new comparison columns based on report type
     sc_cols_lower = {col.lower(): idx for idx, col in enumerate(sc_cols, 1)}
-    is_client = report_type.lower() == 'client'
-    
-    if is_client and 'case' in sc_cols_lower:
+    is_client = report_type.lower() == "client"
+
+    # COLUMN PLACEMENT STRATEGY:
+    # - Client reports: Insert after 'case' column for better visibility
+    # - Accreditation/WCB: Append at the end
+    if is_client and "case" in sc_cols_lower:
         # For client reports, insert after the 'case' column
-        insert_after_idx = sc_cols_lower['case']
-        
+        insert_after_idx = sc_cols_lower["case"]
+
         # Insert two columns: "D365 Status" and "Is it the same?"
         ws_sc.insert_cols(insert_after_idx + 1, 2)
-        
-        # Update sc_status_col_letter since we inserted columns before it (if applicable)
+
+        # CRITICAL: Update status column position if it shifted due to insertion
         if sc_status_col_idx_orig > insert_after_idx:
             sc_status_col_idx_orig += 2
             sc_status_col_letter = ws_sc.cell(1, sc_status_col_idx_orig).column_letter
-        
+
         # Set headers for inserted columns
         ws_sc.cell(1, insert_after_idx + 1, "D365 Status")
         ws_sc.cell(1, insert_after_idx + 2, "Is it the same?")
     else:
-        # For Accreditation and WCB, add columns at the end (no insertion needed)
+        # For Accreditation and WCB, add columns at the end
         insert_after_idx = len(sc_cols)
-        
-        # Set headers in the last two columns
+
+        # Set headers at the end
         ws_sc.cell(1, insert_after_idx + 1, "D365 Status")
         ws_sc.cell(1, insert_after_idx + 2, "Is it the same?")
-    
+
     # Format specific headers (red fill, black bold text)
     apply_header_formatting(ws_sc)
-    
+
+    # Enable autofilter on headers
+    ws_sc.auto_filter.ref = ws_sc.dimensions
+
     # ===== D365 SHEET (CREATED SECOND) =====
     ws_d365 = wb.create_sheet("D365")
-    
+
     # Write D365 data (preserve original column order)
-    for r_idx, row in enumerate(dataframe_to_rows(df_d365.drop(columns=['clean_id']), index=False, header=True), 1):
+    for r_idx, row in enumerate(
+        dataframe_to_rows(df_d365.drop(columns=["clean_id"]), index=False, header=True), 1
+    ):
         for c_idx, value in enumerate(row, 1):
             ws_d365.cell(row=r_idx, column=c_idx, value=value)
-    
+
     # Find D365 ID and Status column positions (1-indexed for Excel)
-    d365_cols = list(df_d365.drop(columns=['clean_id']).columns)
+    d365_cols = list(df_d365.drop(columns=["clean_id"]).columns)
     d365_id_col_idx = d365_cols.index(id_col_d365) + 1
     d365_status_col_idx = d365_cols.index(status_col_d365) + 1
     d365_id_col_letter = ws_d365.cell(1, d365_id_col_idx).column_letter
-    
+
     # Add SC Status column with XLOOKUP formula
     sc_status_col_idx = len(d365_cols) + 1
     ws_d365.cell(1, sc_status_col_idx, "SC Status")
-    
+
     # Add "Is it the same?" column
     is_same_col_idx = sc_status_col_idx + 1
     ws_d365.cell(1, is_same_col_idx, "Is it the same?")
-    
+
     # Format specific headers (red fill, black bold text)
     apply_header_formatting(ws_d365)
-    
+
+    # Enable autofilter on headers
+    ws_d365.auto_filter.ref = ws_d365.dimensions
+
     # Add XLOOKUP formulas for D365 sheet (row 2 onwards)
     # Cache column letters for better performance
     d365_status_col_letter = ws_d365.cell(1, d365_status_col_idx).column_letter
     sc_status_lookup_col_letter = ws_d365.cell(1, sc_status_col_idx).column_letter
     is_same_col_letter = ws_d365.cell(1, is_same_col_idx).column_letter
-    
+
     for row_idx in range(2, len(df_d365) + 2):
         # XLOOKUP with _xlfn prefix and entire column references
         xlookup_formula = f'=_xlfn.XLOOKUP({d365_id_col_letter}{row_idx},SC!{sc_id_col_letter}:{sc_id_col_letter},SC!{sc_status_col_letter}:{sc_status_col_letter},"Not found",0)'
         ws_d365.cell(row_idx, sc_status_col_idx, xlookup_formula)
-        
+
         # Is it the same? formula
-        ws_d365.cell(row_idx, is_same_col_idx, f'={d365_status_col_letter}{row_idx}={sc_status_lookup_col_letter}{row_idx}')
-    
+        ws_d365.cell(
+            row_idx,
+            is_same_col_idx,
+            f"={d365_status_col_letter}{row_idx}={sc_status_lookup_col_letter}{row_idx}",
+        )
+
     # Add XLOOKUP formulas for SC sheet (row 2 onwards)
     d365_status_col_letter_ref = ws_d365.cell(1, d365_status_col_idx).column_letter
     d365_lookup_col_letter = ws_sc.cell(1, insert_after_idx + 1).column_letter
     is_same_col_letter_sc = ws_sc.cell(1, insert_after_idx + 2).column_letter
-    
-    # Pre-calculate comparison column for client reports
+
+    # ============================================================================
+    # CRITICAL: Determine which column to compare for "Is it the same?" formula
+    # ============================================================================
+    # CLIENT REPORTS: 'case' column IS the status column (business requirement)
+    #   - The SafeContractor Redash query for client-specific global IDs
+    #     returns status in the 'case' column
+    #   - Must compare 'case' vs D365 Status for accurate comparison
+    #
+    # ACCREDITATION/WCB REPORTS: Regular 'status' column is used
+    #   - Standard status comparison logic applies
+    #
+    # DO NOT "FIX" THIS - This is the CORRECT implementation!
+    # ============================================================================
     comparison_col_letter = sc_status_col_letter
-    if report_type.lower() == 'client':
-        case_col_idx = next((idx for idx, col in enumerate(sc_cols, 1) if col.lower() == 'case'), None)
+    if report_type.lower() == "client":
+        case_col_idx = next(
+            (idx for idx, col in enumerate(sc_cols, 1) if col.lower() == "case"), None
+        )
         if case_col_idx:
             # Adjust if columns were inserted before the case column
             if case_col_idx > insert_after_idx:
                 case_col_idx += 2
             comparison_col_letter = ws_sc.cell(1, case_col_idx).column_letter
-    
+
+    # Log comparison logic for verification
+    comparison_col_name = CLIENT_STATUS_COLUMN if report_type.lower() == "client" else status_col_sc
+    print(f"     Comparison Logic:")
+    print(f"       - D365 Sheet: Comparing D365 '{status_col_d365}' vs SC Status")
+    print(f"       - SC Sheet: Comparing SC '{comparison_col_name}' vs D365 Status")
+
     for row_idx in range(2, len(df_sc) + 2):
         # XLOOKUP with _xlfn prefix and entire column references
         xlookup_formula = f'=_xlfn.XLOOKUP({sc_id_col_letter}{row_idx},D365!{d365_id_col_letter}:{d365_id_col_letter},D365!{d365_status_col_letter_ref}:{d365_status_col_letter_ref},"Not found",0)'
         ws_sc.cell(row_idx, insert_after_idx + 1, xlookup_formula)
-        
-        # Is it the same? formula
-        ws_sc.cell(row_idx, insert_after_idx + 2, f'={comparison_col_letter}{row_idx}={d365_lookup_col_letter}{row_idx}')
-    
+
+        # Is it the same? formula - compares appropriate status column
+        ws_sc.cell(
+            row_idx,
+            insert_after_idx + 2,
+            f"={comparison_col_letter}{row_idx}={d365_lookup_col_letter}{row_idx}",
+        )
+
     # Save file with retry logic for locked files
     output_file = OUTPUT_DIR / f"{report_type.title()}_Comparison.xlsx"
-    
+
+    # Check if file is writable before attempting save
+    if output_file.exists():
+        is_accessible, msg, fix = check_file_accessibility(output_file, mode="write")
+        if not is_accessible:
+            print(Messages.warning(msg))
+            if fix:
+                print(Messages.suggestion(fix))
+            # Try with timestamp immediately
+
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            output_file = OUTPUT_DIR / f"{report_type.title()}_Comparison_{timestamp}.xlsx"
+            print(f"     💾 Saving as: {output_file.name}")
+
     # Try to save with retries
-    max_retries = 3
-    retry_delay = 1  # seconds
-    
-    for attempt in range(max_retries):
+    for attempt in range(MAX_FILE_SAVE_RETRIES):
         try:
             wb.save(output_file)
+            print(Messages.success(f"Successfully saved: {output_file.name}"))
             return output_file
-            
+
         except PermissionError:
-            if attempt < max_retries - 1:
+            if attempt < MAX_FILE_SAVE_RETRIES - 1:
                 # Try again after a short delay
-                print(f"     ⚠️  File is locked (attempt {attempt + 1}/{max_retries}), retrying...")
-                import time
-                time.sleep(retry_delay)
+                print(
+                    Messages.warning(
+                        Messages.FILE_LOCKED.format(
+                            attempt=attempt + 1, max_attempts=MAX_FILE_SAVE_RETRIES
+                        )
+                    )
+                )
+                print(Messages.suggestion(Messages.CLOSE_FILE.format(filename=output_file.name)))
+
+                time.sleep(FILE_SAVE_RETRY_DELAY_SECONDS)
             else:
                 # Final attempt failed - save with timestamp
-                from datetime import datetime
+                print(
+                    Messages.error(
+                        Messages.FILE_STILL_LOCKED.format(max_attempts=MAX_FILE_SAVE_RETRIES)
+                    )
+                )
+
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 backup_file = OUTPUT_DIR / f"{report_type.title()}_Comparison_{timestamp}.xlsx"
-                
+
                 try:
                     wb.save(backup_file)
-                    print(f"     ⚠️  Original file locked - saved as: {backup_file.name}")
-                    print(f"     💡 Please close {output_file.name} in Excel for next time")
+                    print(f"     ✅ Saved with timestamp: {backup_file.name}")
+                    print(
+                        Messages.suggestion(
+                            Messages.REMEMBER_TO_CLOSE.format(filename=output_file.name)
+                        )
+                    )
                     return backup_file
                 except Exception as e:
-                    print(f"     ❌ Failed to save even with timestamp: {e}")
+                    print(Messages.error(Messages.CRITICAL_SAVE_ERROR))
+                    print(f"     Error: {e}")
+                    print(
+                        Messages.suggestion(
+                            Messages.CHECK_DISK_SPACE.format(directory=OUTPUT_DIR)
+                        )
+                    )
                     raise
-        
+
         except Exception as e:
-            print(f"     ❌ Unexpected error saving file: {e}")
+            error_type = type(e).__name__
+            print(
+                Messages.error(
+                    Messages.UNEXPECTED_ERROR.format(error_type=error_type)
+                )
+            )
+            print(f"     Details: {str(e)}")
+            print(Messages.suggestion(Messages.CHECK_WRITABLE))
             raise
-    
+
     return output_file
 
 
@@ -458,82 +543,122 @@ def generate_comparisons():
     """
     Step 2: Generate comparison Excel files
     """
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("STEP 2: GENERATING COMPARISON FILES")
-    print("="*70)
-    
+    print("=" * 70)
+
     success_count = 0
-    
+
     for report_type in ["accreditation", "wcb", "client"]:
-        print(f"\n▶ Processing {report_type.upper()}...")
-        
+        print(Messages.processing(report_type))
+
         # Check if files exist in subdirectories
-        dynamics_dir = INPUT_DIR / "dynamics"
-        redash_dir = INPUT_DIR / "redash"
-        d365_file = dynamics_dir / D365_FILES[report_type]
-        sc_file = redash_dir / SC_FILES[report_type]
-        
+        d365_file = DYNAMICS_DIR / D365_FILES[report_type]
+        sc_file = REDASH_DIR / SC_FILES[report_type]
+
         if not d365_file.exists():
-            print(f"  ⚠ Warning: {d365_file.name} not found, skipping...")
+            print(Messages.warning(f"{d365_file.name} not found, skipping..."))
             continue
-        
+
         if not sc_file.exists():
-            print(f"  ⚠ Warning: {sc_file.name} not found, skipping...")
+            print(Messages.warning(f"{sc_file.name} not found, skipping..."))
             continue
-        
-        # Read files
-        df_d365 = pd.read_excel(d365_file)
-        df_sc = pd.read_excel(sc_file)
-        
-        print(f"  ✓ Read D365: {len(df_d365)} rows")
-        print(f"  ✓ Read SC: {len(df_sc)} rows")
-        
+
+        # Validate file formats
+        is_valid_d365, error_msg_d365, fix_d365 = validate_file_format(d365_file)
+        if not is_valid_d365:
+            print(Messages.error(error_msg_d365))
+            if fix_d365:
+                print(Messages.suggestion(fix_d365))
+            continue
+
+        is_valid_sc, error_msg_sc, fix_sc = validate_file_format(sc_file)
+        if not is_valid_sc:
+            print(Messages.error(error_msg_sc))
+            if fix_sc:
+                print(Messages.suggestion(fix_sc))
+            continue
+
+        # Read files with error handling
+        df_d365, error_d365, fix_d365 = safe_read_excel(d365_file)
+        if error_d365:
+            print(Messages.error(f"reading {d365_file.name}: {error_d365}"))
+            if fix_d365:
+                print(Messages.suggestion(fix_d365))
+            continue
+
+        df_sc, error_sc, fix_sc = safe_read_excel(sc_file)
+        if error_sc:
+            print(Messages.error(f"reading {sc_file.name}: {error_sc}"))
+            if fix_sc:
+                print(Messages.suggestion(fix_sc))
+            continue
+
+        print(Messages.success(Messages.READ_D365.format(count=len(df_d365))))
+        print(Messages.success(Messages.READ_SC.format(count=len(df_sc))))
+
+        # Validate DataFrame structures
+        required_d365_cols = [("global", "alcumus", "id"), ("status",)]
+        is_valid, error_msg, fix = validate_dataframe(df_d365, d365_file.name, required_d365_cols)
+        if not is_valid:
+            print(Messages.error(error_msg))
+            if fix:
+                print(Messages.suggestion(fix))
+            continue
+
+        required_sc_cols = [("id",)]  # SC file should have at least an ID column
+        is_valid, error_msg, fix = validate_dataframe(df_sc, sc_file.name, required_sc_cols)
+        if not is_valid:
+            print(Messages.error(error_msg))
+            if fix:
+                print(Messages.suggestion(fix))
+            continue
+
         try:
             # Create comparison (include Qualification URL for WCB)
-            include_qual_url = (report_type == "wcb")
+            include_qual_url = report_type == "wcb"
             output_file = create_comparison_excel(report_type, df_d365, df_sc, include_qual_url)
-            
+
             if output_file:
-                print(f"  ✓ Created: {output_file.name}")
+                print(Messages.success(Messages.CREATED_FILE.format(filename=output_file.name)))
                 success_count += 1
             else:
-                print(f"  ❌ Failed to create comparison")
-                
+                print(Messages.error(Messages.FAILED_COMPARISON))
+
         except Exception as e:
-            print(f"❌ Error processing {report_type}: {e}")
+            print(f"{Messages.ERROR} Error processing {report_type}: {e}")
             import traceback
+
             traceback.print_exc()
             continue
-    
-    print("\n" + "="*70)
+
+    print("\n" + "=" * 70)
     if success_count > 0:
         print(f"SUCCESS! Created {success_count} comparison file(s) in output/")
     else:
         print("No comparison files were created. Check file locations.")
-    print("="*70 + "\n")
+    print("=" * 70 + "\n")
 
 
 def main():
     """
     Main execution flow - Manual workflow (3 steps)
     """
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("DYNAMICS 365 vs SAFECONTRACTOR STATUS COMPARISON")
     print("Manual Workflow Mode")
-    print("="*70)
-    
+    print("=" * 70)
+
     # Check if SC files exist (determines which step to run)
-    redash_dir = INPUT_DIR / "redash"
     sc_files_exist = all(
-        find_file_by_pattern(redash_dir, SC_PATTERNS[t]) is not None 
-        for t in ["accreditation", "wcb", "client"]
+        find_file_by_pattern(REDASH_DIR, SC_PATTERNS[t]) is not None for t in REPORT_TYPES
     )
-    
+
     if sc_files_exist:
-        print("\n✓ All SC files found - Generating comparisons...")
+        print(f"\n{Messages.ALL_FILES_FOUND}")
         generate_comparisons()
     else:
-        print("\n⚠ SC files not found - Starting with ID extraction...")
+        print(f"\n{Messages.WARNING} SC files not found - Starting with ID extraction...")
         extract_and_save_ids()
 
 

@@ -11,14 +11,6 @@ from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.styles import Font, PatternFill
 import warnings
 
-# Import Redash integration
-try:
-    from redash_integration import execute_redash_query, save_redash_results
-    REDASH_AVAILABLE = True
-except ImportError:
-    REDASH_AVAILABLE = False
-    print("⚠ Warning: Redash integration not available")
-
 # Suppress openpyxl style warnings
 warnings.filterwarnings('ignore', category=UserWarning, module='openpyxl')
 
@@ -229,81 +221,16 @@ def extract_and_save_ids():
             print(f"    {line}")
         if len(lines) > 5:
             print(f"    ... and {len(lines) - 5} more")
-        
-        # Execute Redash query automatically if integration is available
-        if REDASH_AVAILABLE:
-            try:
-                print(f"\n  🚀 Executing Redash query automatically...")
-                df_results = execute_redash_query(report_type, unique_ids)
-                
-                if df_results is not None and len(df_results) > 0:
-                    # Save results to redash directory
-                    redash_dir = INPUT_DIR / "redash"
-                    redash_dir.mkdir(exist_ok=True)
-                    save_redash_results(report_type, df_results, redash_dir)
-                else:
-                    print(f"  ⚠ Warning: Query returned no results")
-            except Exception as e:
-                print(f"  ⚠ Warning: Redash query failed: {e}")
-                print(f"  → You can manually run the query using the IDs in {output_file.name}")
-
-    
-    # Execute Client query if Redash is available
-    if REDASH_AVAILABLE:
-        print(f"\n▶ Processing CLIENT...")
-        
-        # Find Client D365 file and extract IDs
-        dynamics_dir = INPUT_DIR / "dynamics"
-        client_file_path = find_file_by_pattern(dynamics_dir, D365_PATTERNS["client"], "d365")
-        if not client_file_path:
-            client_file_path = find_file_by_pattern(dynamics_dir, D365_PATTERNS["client"])
-        
-        if client_file_path:
-            try:
-                df_client = pd.read_excel(client_file_path)
-                print(f"  ✓ Read {len(df_client)} rows from {client_file_path.name}")
-                
-                # Find and extract IDs
-                id_col = find_column_by_keywords(df_client.columns, ('global', 'alcumus', 'id'))
-                
-                if id_col:
-                    client_ids = df_client[id_col].dropna().map(clean_uuid).dropna().unique()
-                    client_ids = sorted(client_ids)
-                    print(f"  ✓ Extracted {len(client_ids)} unique IDs")
-                    print(f"  📅 Using fresh IDs from today's D365 Client upload")
-                    
-                    # Execute Redash query with IDs
-                    df_client_results = execute_redash_query("client", client_ids)
-                    
-                    if df_client_results is not None and len(df_client_results) > 0:
-                        redash_dir = INPUT_DIR / "redash"
-                        redash_dir.mkdir(exist_ok=True)
-                        save_redash_results("client", df_client_results, redash_dir)
-                    else:
-                        print(f"  ⚠ Warning: Client query returned no results")
-                else:
-                    print(f"  ⚠ Warning: Could not find ID column in Client file")
-                    
-            except Exception as e:
-                print(f"  ⚠ Warning: Client query failed: {e}")
-        else:
-            print(f"  ⚠ Warning: No D365 Client file found, skipping client query")
     
     print("\n" + "="*70)
-    if REDASH_AVAILABLE:
-        print("✅ ID EXTRACTION AND REDASH QUERIES COMPLETED!")
-        print("")
-        print("All Redash queries have been executed automatically.")
-        print("Results saved to input/redash/ folder.")
-        print("")
-        print("Run this script again to generate comparison files.")
-    else:
-        print("NEXT STEP (Manual Process):")
-        print("1. Copy IDs from output/query_ids/*.sql.txt files")
-        print("2. Paste into Redash IN (...) clauses")
-        print("3. Download SC results as accreditation_sc.xlsx, wcb_sc.xlsx, client_sc.xlsx")
-        print("4. Place SafeContractor (Redash) files in input/redash/ folder")
-        print("5. Run this script again to generate comparisons")
+    print("✅ ID EXTRACTION COMPLETED!")
+    print("")
+    print("NEXT STEP (Manual Process):")
+    print("1. Copy IDs from output/query_ids/*.sql.txt files")
+    print("2. Paste into Redash IN (...) clauses")
+    print("3. Download SC results as accreditation_sc.xlsx, wcb_sc.xlsx, client_sc.xlsx")
+    print("4. Place SafeContractor (Redash) files in input/redash/ folder")
+    print("5. Run this script again to generate comparisons")
     print("="*70 + "\n")
 
 
@@ -588,12 +515,11 @@ def generate_comparisons():
 
 def main():
     """
-    Main execution flow with automatic Redash integration
+    Main execution flow - Manual workflow (3 steps)
     """
     print("\n" + "="*70)
     print("DYNAMICS 365 vs SAFECONTRACTOR STATUS COMPARISON")
-    if REDASH_AVAILABLE:
-        print("✨ Redash Auto-Query: ENABLED")
+    print("Manual Workflow Mode")
     print("="*70)
     
     # Check if SC files exist (determines which step to run)
@@ -607,26 +533,8 @@ def main():
         print("\n✓ All SC files found - Generating comparisons...")
         generate_comparisons()
     else:
-        print("\n⚠ SC files not found - Starting with ID extraction and Redash queries...")
+        print("\n⚠ SC files not found - Starting with ID extraction...")
         extract_and_save_ids()
-        
-        # If Redash integration succeeded, automatically generate comparisons
-        if REDASH_AVAILABLE:
-            # Check again if files were created by Redash
-            sc_files_exist = all(
-                find_file_by_pattern(redash_dir, SC_PATTERNS[t]) is not None 
-                for t in ["accreditation", "wcb", "client"]
-            )
-            
-            if sc_files_exist:
-                print("\n" + "="*70)
-                print("🎯 All Redash queries completed successfully!")
-                print("="*70)
-                input("\nPress Enter to generate comparison files...")
-                generate_comparisons()
-            else:
-                print("\n⚠ Note: Some Redash queries may have failed.")
-                print("   Check the output above for any errors.")
 
 
 if __name__ == "__main__":

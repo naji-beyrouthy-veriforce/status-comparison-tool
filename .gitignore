@@ -17,11 +17,15 @@ ENV/
 *.swo
 *~
 
-# Project specific
-input/*.xlsx
-input/*.xls
-input/*.csv
+# Project specific - ignore all data files in input/output
+input/dynamics/*.xlsx
+input/dynamics/*.xls
+input/dynamics/*.csv
+input/redash/*.xlsx
+input/redash/*.xls
+input/redash/*.csv
 output/*.xlsx
+output/*.xls
 output/query_ids/*.txt
 output/query_ids/*.sql
 
@@ -41,10 +45,15 @@ desktop.ini
 # Logs
 *.log
 
-# Sensitive - API Keys and Credentials
+# Sensitive - API Keys and Credentials (deprecated but kept for safety)
 redash_config.py
+redash_config_template.py
+redash_integration.py
 .env
 *.key
 
-# Test files
+# Test files (deprecated)
 test_redash.py
+
+# Temporary documentation
+WORKFLOW_RESTORED.md

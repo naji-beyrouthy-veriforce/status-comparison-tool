@@ -1,6 +1,6 @@
 """
 GUI Interface for Dynamics 365 vs SafeContractor Status Comparison
-Drag-and-drop file upload interface with one-click processing
+Drag-and-drop file upload interface with manual workflow
 """
 
 import tkinter as tk
@@ -22,8 +22,7 @@ from automate_comparison import (
     INPUT_DIR,
     OUTPUT_DIR,
     D365_FILES,
-    SC_FILES,
-    REDASH_AVAILABLE
+    SC_FILES
 )
 
 
@@ -96,36 +95,27 @@ class ComparisonApp:
         
         # Tab 1: Upload D365 Files
         self.tab_d365 = ttk.Frame(self.notebook)
-        if REDASH_AVAILABLE:
-            self.notebook.add(self.tab_d365, text="🚀 Upload D365 & Auto-Process")
-        else:
-            self.notebook.add(self.tab_d365, text="1. Upload D365 Files")
+        self.notebook.add(self.tab_d365, text="1. Upload D365 Files")
         self.setup_d365_tab()
         
-        # Tab 2: Extract IDs (hidden if Redash available)
-        if not REDASH_AVAILABLE:
-            self.tab_extract = ttk.Frame(self.notebook)
-            self.notebook.add(self.tab_extract, text="2. Extract IDs")
-            self.setup_extract_tab()
+        # Tab 2: Extract IDs
+        self.tab_extract = ttk.Frame(self.notebook)
+        self.notebook.add(self.tab_extract, text="2. Extract IDs")
+        self.setup_extract_tab()
         
-        # Tab 3: Upload SafeContractor Files (hidden if Redash available)
-        if not REDASH_AVAILABLE:
-            self.tab_sc = ttk.Frame(self.notebook)
-            self.notebook.add(self.tab_sc, text="3. Upload SafeContractor Files")
-            self.setup_sc_tab()
+        # Tab 3: Upload SafeContractor Files
+        self.tab_sc = ttk.Frame(self.notebook)
+        self.notebook.add(self.tab_sc, text="3. Upload SafeContractor Files")
+        self.setup_sc_tab()
         
         # Tab 4: Generate Comparisons
         self.tab_compare = ttk.Frame(self.notebook)
-        if REDASH_AVAILABLE:
-            self.notebook.add(self.tab_compare, text="📊 View Results")
-        else:
-            self.notebook.add(self.tab_compare, text="4. Generate Comparisons")
+        self.notebook.add(self.tab_compare, text="4. Generate Comparisons")
         self.setup_compare_tab()
         
         # Status bar
         self.status_var = tk.StringVar()
-        initial_status = "✓ Ready - Upload D365 files for automated processing" if REDASH_AVAILABLE else "✓ Ready - Start by uploading D365 files"
-        self.status_var.set(initial_status)
+        self.status_var.set("✓ Ready - Start by uploading D365 files")
         status_bar = tk.Label(
             self.root,
             textvariable=self.status_var,
@@ -149,17 +139,13 @@ class ComparisonApp:
         
         tk.Label(
             info_frame,
-            text="📁 Upload Dynamics 365 Exports" + (" ✨ (Auto-Redash Enabled)" if REDASH_AVAILABLE else ""),
+            text="📁 Upload Dynamics 365 Exports",
             font=("Segoe UI", 14, "bold"),
             bg="#E3F2FD",
             fg="#0D47A1"
         ).pack(anchor=tk.W, padx=20, pady=(15, 5))
         
-        instruction_text = "Drag & drop all 3 D365 files at once. "
-        if REDASH_AVAILABLE:
-            instruction_text += "The system will automatically extract IDs, execute Redash queries, and generate comparison files!"
-        else:
-            instruction_text += "The system will automatically detect Accreditation, WCB, and Client files."
+        instruction_text = "Drag & drop all 3 D365 files at once. The system will automatically detect Accreditation, WCB, and Client files."
         
         tk.Label(
             info_frame,
@@ -206,10 +192,9 @@ class ComparisonApp:
         btn_frame = tk.Frame(self.tab_d365, bg="#f5f5f5")
         btn_frame.pack(pady=30)
         
-        button_text = "🚀 Process & Auto-Generate" if REDASH_AVAILABLE else "✓ Save D365 Files & Continue"
         self.btn_process_d365 = tk.Button(
             btn_frame,
-            text=button_text,
+            text="✓ Save D365 Files & Continue",
             command=self.save_d365_files,
             bg="#1976D2",
             fg="white",
@@ -703,31 +688,9 @@ class ComparisonApp:
                 "D365 files saved successfully!\n\nNext step: Go to 'Extract IDs' tab to generate ID lists for Redash."
             )
             
-            # If Redash is available, automatically trigger the full workflow
-            if REDASH_AVAILABLE:
-                result = messagebox.askyesno(
-                    "Auto-Process Ready",
-                    "D365 files saved!\n\n🚀 Redash integration is enabled.\n\n"
-                    "Would you like to automatically:\n"
-                    "• Extract IDs\n"
-                    "• Execute Redash queries\n"
-                    "• Generate comparison files?\n\n"
-                    "This will take 2-5 minutes.",
-                    icon='question'
-                )
-                
-                if result:
-                    # Switch to results tab and start processing
-                    self.notebook.select(1 if REDASH_AVAILABLE else 3)
-                    self.status_var.set("🚀 Starting automated workflow...")
-                    # Trigger the full workflow
-                    self.run_full_workflow()
-                else:
-                    self.notebook.select(1)  # Switch to Extract IDs tab if manual
-                    self.status_var.set("D365 files saved - Ready to extract IDs")
-            else:
-                self.notebook.select(1)  # Switch to Extract IDs tab
-                self.status_var.set("D365 files saved - Ready to extract IDs")
+            # Always go to Extract IDs tab in manual mode
+            self.notebook.select(1)  # Switch to Extract IDs tab
+            self.status_var.set("D365 files saved - Ready to extract IDs")
             
         except Exception as e:
             messagebox.showerror("Error", f"Failed to save files:\n{e}")
@@ -813,111 +776,73 @@ class ComparisonApp:
             )
             self.notebook.select(2)  # Switch to Upload SC tab
     
-    def run_full_workflow(self):
-        """Run the complete automated workflow: Extract IDs → Redash → Generate Comparisons"""
-        # Update button state
-        if hasattr(self, 'btn_process_d365'):
-            self.btn_process_d365.config(state=tk.DISABLED, text="⏳ Processing...")
-        
-        # Clear console if it exists
-        if hasattr(self, 'compare_console'):
-            self.compare_console.delete(1.0, tk.END)
-        
-        self.status_var.set("🚀 Running automated workflow...")
-        
-        def run_workflow():
-            import io
-            import contextlib
-            
-            f = io.StringIO()
-            success = False
-            
-            try:
-                with contextlib.redirect_stdout(f):
-                    # Step 1: Extract IDs and execute Redash queries
-                    print("=" * 70)
-                    print("AUTOMATED WORKFLOW - D365 TO COMPARISON FILES")
-                    print("=" * 70)
-                    extract_and_save_ids()
-                    
-                    # Step 2: Generate comparisons
-                    print("\n" + "=" * 70)
-                    print("Checking if Redash queries completed...")
-                    print("=" * 70)
-                    
-                    # Small delay to ensure files are written
-                    import time
-                    time.sleep(1)
-                    
-                    generate_comparisons()
-                    
-                    success = True
-                    
-            except Exception as e:
-                print(f"\n❌ Workflow Error: {e}")
-                import traceback
-                traceback.print_exc()
-            
-            output = f.getvalue()
-            
-            # Update UI in main thread
-            self.root.after(0, lambda: self.workflow_complete(output, success))
-        
-        thread = threading.Thread(target=run_workflow, daemon=True)
-        thread.start()
-    
-    def workflow_complete(self, output, success):
-        """Handle workflow completion"""
-        # Update console if available
-        if hasattr(self, 'compare_console'):
-            self.compare_console.delete(1.0, tk.END)
-            self.compare_console.insert(tk.END, output)
-            self.compare_console.see(tk.END)
-        
-        # Re-enable button
-        if hasattr(self, 'btn_process_d365'):
-            self.btn_process_d365.config(
-                state=tk.NORMAL, 
-                text="🚀 Process & Auto-Generate" if REDASH_AVAILABLE else "✓ Save D365 Files & Continue"
-            )
-        
-        if success and "SUCCESS" in output:
-            self.status_var.set("✅ All done! Comparison files generated successfully!")
-            messagebox.showinfo(
-                "Workflow Complete! 🎉",
-                "Automated workflow completed successfully!\n\n"
-                "✓ IDs extracted\n"
-                "✓ Redash queries executed\n"
-                "✓ Comparison files generated\n\n"
-                "Check the output folder for your comparison files!"
-            )
-        else:
-            self.status_var.set("⚠ Workflow completed with errors - Check console")
-            messagebox.showwarning(
-                "Workflow Issues",
-                "The workflow completed but encountered some issues.\n\n"
-                "Please check the console output for details.\n\n"
-                "Some files may have been generated successfully."
-            )
-    
     def generate_comparison(self):
         """Run comparison generation in background thread"""
+        # Check if SC files exist
+        from automate_comparison import SC_PATTERNS, find_file_by_pattern
+        redash_dir = INPUT_DIR / "redash"
+        
+        sc_files_exist = any(
+            find_file_by_pattern(redash_dir, SC_PATTERNS[t]) is not None 
+            for t in ["accreditation", "wcb", "client"]
+        )
+        
+        if not sc_files_exist:
+            messagebox.showerror(
+                "SC Files Missing",
+                "SafeContractor files are not found!\n\n"
+                "Please:\n"
+                "1. Extract IDs from D365 files (Tab 2)\n"
+                "2. Run Redash queries with those IDs\n"
+                "3. Upload the SC files from Redash (Tab 3)\n"
+                "4. Then generate comparisons"
+            )
+            self.status_var.set("SC files missing - Cannot generate comparisons")
+            return
+        
         self.btn_compare.config(state=tk.DISABLED, text="⏳ Generating...")
         self.compare_console.delete(1.0, tk.END)
         self.status_var.set("Generating comparisons...")
         
         def run_comparison():
-            # Redirect stdout to console
-            import io
-            import contextlib
+            # Redirect stdout to console with real-time updates
+            import sys
+            from io import StringIO
             
-            f = io.StringIO()
-            with contextlib.redirect_stdout(f):
-                try:
-                    generate_comparisons()
-                    output = f.getvalue()
-                except Exception as e:
-                    output = f"Error: {e}\n{f.getvalue()}"
+            class StreamToConsole:
+                def __init__(self, console_widget, root):
+                    self.console = console_widget
+                    self.root = root
+                    self.buffer = StringIO()
+                
+                def write(self, text):
+                    self.buffer.write(text)
+                    if self.console:
+                        self.root.after(0, lambda: self._update_console(text))
+                
+                def _update_console(self, text):
+                    if self.console:
+                        self.console.insert(tk.END, text)
+                        self.console.see(tk.END)
+                        self.console.update_idletasks()
+                
+                def flush(self):
+                    pass
+                
+                def getvalue(self):
+                    return self.buffer.getvalue()
+            
+            stream = StreamToConsole(self.compare_console, self.root)
+            
+            try:
+                old_stdout = sys.stdout
+                sys.stdout = stream
+                generate_comparisons()
+                output = stream.getvalue()
+            except Exception as e:
+                output = f"Error: {e}\n{stream.getvalue()}"
+            finally:
+                sys.stdout = old_stdout
             
             # Update UI in main thread
             self.root.after(0, self.comparison_complete, output)

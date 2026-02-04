@@ -17,17 +17,15 @@ ENV/
 *.swo
 *~
 
-# Project specific - ignore all data files in input/output
-input/dynamics/*.xlsx
-input/dynamics/*.xls
-input/dynamics/*.csv
-input/redash/*.xlsx
-input/redash/*.xls
-input/redash/*.csv
-output/*.xlsx
-output/*.xls
-output/query_ids/*.txt
-output/query_ids/*.sql
+# Project specific - ignore all data files (keep only .gitkeep for structure)
+input/dynamics/*
+!input/dynamics/.gitkeep
+input/redash/*
+!input/redash/.gitkeep
+output/*
+!output/query_ids/
+output/query_ids/*
+!output/query_ids/.gitkeep
 
 # Excel temp files
 ~$*.xlsx

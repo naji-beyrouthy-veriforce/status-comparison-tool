@@ -1,6 +1,50 @@
 # Project Memory - Status Comparison Tool
 **Last Updated:** February 4, 2026  
-**Status:** ✅ Fully Functional - Manual Workflow
+**Status:** ✅ Fully Functional - Manual Workflow  
+**Code Quality:** ✅ Technical Debt Resolved
+
+---
+
+## 📝 Recent Updates
+
+### Technical Debt Cleanup & Code Quality (Latest)
+**Date:** February 4, 2026
+
+✅ **Completed Improvements:**
+1. **Eliminated Duplicate Code:** Centralized header formatting in utils.py
+2. **Extracted Magic Numbers:** All numeric constants now in config.py
+3. **Centralized UI Strings:** Created Messages class for all user-facing text
+4. **Moved Imports to Module Level:** datetime and time imports follow PEP 8
+5. **GUI Consistency:** GUI now uses Messages class like CLI
+6. **Removed Unused Code:** Deleted COLUMN_KEYWORDS and unused dictionaries
+
+**Impact:**
+- 50+ hardcoded strings → Messages class
+- 100% message consistency across CLI and GUI
+- PEP 8 compliant imports
+- Cleaner, more maintainable codebase
+- Easy internationalization path
+
+---
+
+## ⚠️ CRITICAL BUSINESS LOGIC - READ FIRST
+
+### **Client Report Comparison Logic**
+**DO NOT MODIFY WITHOUT UNDERSTANDING THIS:**
+
+For **Client** reports from SafeContractor Redash query:
+- The `case` column **IS** the status column for client-specific global IDs
+- This is **NOT** the same as a regular `status` column
+- Comparison logic **MUST** use `case` column vs D365 Status
+- This is the **CORRECT** behavior per business requirements
+
+For **Accreditation/WCB** reports:
+- The `status` column is used for comparisons (standard behavior)
+
+**Why this matters:**
+- The SafeContractor Redash query structure for client-specific records returns status data in the `case` field
+- Attempting to "fix" this by using a generic status column will break client comparisons
+- The "Is it the same?" formula correctly compares `case` vs D365 Status for client reports
 
 ---
 
@@ -21,15 +65,16 @@ Automates the comparison of contractor statuses between Dynamics 365 (D365) and 
 ```
 status_comparaison_tool/
 ├── automate_comparison.py    # Core logic: ID extraction & comparison generation
+├── config.py                 # ⭐ Configuration hub: constants, patterns, Messages class
+├── utils.py                  # ⭐ Reusable utilities: validation, formatting, file ops
 ├── gui_app.py                # GUI interface: 4-tab manual workflow
-├── redash_integration.py     # [NOT USED] Old automation code - can be deleted
-├── redash_config.py          # [NOT USED] Config - can be deleted
-├── test_redash.py            # [NOT USED] Testing - can be deleted
 ├── requirements.txt          # Python dependencies
 ├── Run_CLI.bat              # Run command-line version
 ├── Run_GUI.bat              # Run GUI version (primary method)
 ├── README.md                # User documentation
 ├── PROJECT_MEMORY.md        # THIS FILE - Developer reference
+├── TECHNICAL_DEBT_FIXES.md  # ⭐ Technical debt cleanup documentation
+├── .gitignore               # ⭐ Git exclusions (enhanced)
 ├── input/
 │   ├── dynamics/            # D365 Excel files (uploaded via GUI or manual)
 │   └── redash/              # SafeContractor Excel files (from Redash queries)
@@ -38,6 +83,82 @@ status_comparaison_tool/
     │   ├── accreditation_ids.sql.txt
     │   └── wcb_ids.sql.txt
     └── *.xlsx               # Final comparison files (3 reports)
+```
+
+**⭐ = Recently enhanced/created files**
+
+---
+
+## 🏗️ Code Architecture (Modular Design)
+
+### **Module Separation:**
+
+#### **config.py** - Configuration Hub
+- **Purpose:** Single source of truth for all constants
+- **Contents:**
+  - Directory paths (INPUT_DIR, OUTPUT_DIR, etc.)
+  - File patterns (D365_PATTERNS, SC_PATTERNS)
+  - Validation settings (MIN_FILE_SIZE_BYTES, ALLOWED_FILE_EXTENSIONS)
+  - Retry logic constants (MAX_FILE_SAVE_RETRIES, FILE_SAVE_RETRY_DELAY_SECONDS)
+  - Excel formatting (HEADER_FILL, HEADER_FONT, HIGHLIGHT_HEADERS)
+  - **Messages class** - All UI strings centralized
+- **Benefits:** Change configuration without touching business logic
+
+#### **utils.py** - Reusable Utilities
+- **Purpose:** Common functions used across modules
+- **Key Functions:**
+  - `clean_uuid()` - Extract UUID from mixed text
+  - `format_ids_for_sql()` - Format IDs for SQL IN clause
+  - `find_column_by_keywords()` - Flexible column detection
+  - `validate_file_format()` - File validation with suggestions
+  - `validate_dataframe()` - DataFrame structure validation
+  - `validate_uuid_data()` - UUID quality checking
+  - `safe_read_excel()` - Robust Excel reading
+  - `check_file_accessibility()` - Proactive lock detection
+  - `apply_header_formatting()` - Excel header styling
+- **Benefits:** DRY principle, easy testing, reusability
+
+#### **automate_comparison.py** - Business Logic
+- **Purpose:** Core comparison workflow
+- **Functions:**
+  - `extract_and_save_ids()` - Step 1: ID extraction
+  - `create_comparison_excel()` - Create comparison workbooks
+  - `generate_comparisons()` - Step 2: Generate all reports
+  - `main()` - Entry point
+- **Dependencies:** Imports from config.py and utils.py
+- **Benefits:** Clean separation, focused functionality
+
+#### **gui_app.py** - User Interface
+- **Purpose:** 4-tab drag-and-drop interface
+- **Features:**
+  - Tab 1: Upload D365 files
+  - Tab 2: Extract IDs
+  - Tab 3: Upload SC files
+  - Tab 4: Generate comparisons
+- **Dependencies:** Uses config paths and calls automate_comparison functions
+
+### **Data Flow:**
+
+```
+User Input (D365 Files)
+    ↓
+gui_app.py (File Upload) → Saves to input/dynamics/
+    ↓
+automate_comparison.py:extract_and_save_ids()
+    ├→ utils.py:safe_read_excel()
+    ├→ utils.py:validate_uuid_data()
+    └→ utils.py:format_ids_for_sql() → output/query_ids/*.sql.txt
+        ↓
+[MANUAL STEP: User runs Redash queries]
+        ↓
+User Input (SC Files)
+    ↓
+gui_app.py (File Upload) → Saves to input/redash/
+    ↓
+automate_comparison.py:generate_comparisons()
+    ├→ automate_comparison.py:create_comparison_excel()
+    ├→ utils.py:apply_header_formatting()
+    └→ output/*.xlsx (Comparison files)
 ```
 
 ---

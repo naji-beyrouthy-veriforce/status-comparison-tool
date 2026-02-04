@@ -29,10 +29,6 @@ output/*.xls
 output/query_ids/*.txt
 output/query_ids/*.sql
 
-# Keep structure files
-!input/README.txt
-!output/README.txt
-
 # Excel temp files
 ~$*.xlsx
 ~$*.xls
@@ -45,15 +41,6 @@ desktop.ini
 # Logs
 *.log
 
-# Sensitive - API Keys and Credentials (deprecated but kept for safety)
-redash_config.py
-redash_config_template.py
-redash_integration.py
+# Sensitive
 .env
 *.key
-
-# Test files (deprecated)
-test_redash.py
-
-# Temporary documentation
-WORKFLOW_RESTORED.md

@@ -85,7 +85,7 @@ class ComparisonApp:
 
         subtitle_label = tk.Label(
             title_container,
-            text="Status Comparison & Reporting Tool • Dark Mode",
+            text="Status Comparison & Reporting Tool",
             font=("Segoe UI", 11),
             fg="#e0f2fe",
             bg=self.colors['accent_blue'],

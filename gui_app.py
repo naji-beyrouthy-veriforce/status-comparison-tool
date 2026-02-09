@@ -1,10 +1,13 @@
 """
 GUI Interface for Dynamics 365 vs SafeContractor Status Comparison
-Drag-and-drop file upload interface with manual workflow
+Drag-and-drop file upload interface with manual workflow - Dark Mode Edition
 """
 
 import tkinter as tk
-from tkinter import ttk, messagebox, scrolledtext
+from tkinter import messagebox, scrolledtext
+import ttkbootstrap as ttk
+from ttkbootstrap.constants import *
+from ttkbootstrap.widgets import ToolTip
 from tkinterdnd2 import DND_FILES, TkinterDnD
 import threading
 from pathlib import Path
@@ -16,7 +19,7 @@ import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
 
 # Import configuration and utilities
-from config import INPUT_DIR, OUTPUT_DIR, DYNAMICS_DIR, REDASH_DIR, D365_FILES, SC_FILES, Messages
+from config import INPUT_DIR, OUTPUT_DIR, DYNAMICS_DIR, REDASH_DIR, QUERY_IDS_DIR, D365_FILES, SC_FILES, Messages
 
 # Import main processing functions
 from automate_comparison import extract_and_save_ids, generate_comparisons
@@ -26,9 +29,22 @@ class ComparisonApp:
     def __init__(self, root):
         self.root = root
         self.root.title("D365 vs SafeContractor - Status Comparison Tool")
-        self.root.geometry("1000x800")
+        self.root.geometry("1100x850")
         self.root.resizable(True, True)
-        self.root.configure(bg="#f5f5f5")
+        
+        # Dark theme colors
+        self.colors = {
+            'bg_dark': '#1e1e1e',
+            'bg_card': '#2d2d2d',
+            'accent_blue': '#3b82f6',
+            'accent_green': '#10b981',
+            'accent_orange': '#f59e0b',
+            'accent_purple': '#8b5cf6',
+            'text_primary': '#e5e5e5',
+            'text_secondary': '#9ca3af',
+            'border': '#404040',
+            'hover': '#374151'
+        }
 
         # File storage
         self.uploaded_files = {
@@ -41,102 +57,103 @@ class ComparisonApp:
         }
 
         self.setup_ui()
-        self.check_existing_files()
+        # Check for existing files after UI is fully initialized
+        self.root.after(100, self.check_existing_files)
+        
+        # Bind window close event to cleanup
+        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
     def setup_ui(self):
         """Create the user interface"""
-        # Header frame with gradient-like appearance
-        header_frame = tk.Frame(self.root, bg="#1976D2", height=80)
+        # Modern header with gradient effect
+        header_frame = tk.Frame(self.root, bg=self.colors['accent_blue'], height=90)
         header_frame.pack(fill=tk.X)
         header_frame.pack_propagate(False)
 
-        # Title
+        # Title with status indicator
+        title_container = tk.Frame(header_frame, bg=self.colors['accent_blue'])
+        title_container.pack(expand=True)
+        
         title_label = tk.Label(
-            header_frame,
+            title_container,
             text="📊 D365 vs SafeContractor",
-            font=("Segoe UI", 20, "bold"),
+            font=("Segoe UI", 22, "bold"),
             fg="white",
-            bg="#1976D2",
+            bg=self.colors['accent_blue'],
         )
-        title_label.pack(pady=8)
+        title_label.pack(pady=(10, 2))
 
         subtitle_label = tk.Label(
-            header_frame,
-            text="Status Comparison & Reporting Tool",
+            title_container,
+            text="Status Comparison & Reporting Tool • Dark Mode",
             font=("Segoe UI", 11),
-            fg="#E3F2FD",
-            bg="#1976D2",
+            fg="#e0f2fe",
+            bg=self.colors['accent_blue'],
         )
         subtitle_label.pack()
 
         # Main container with tabs
-        container = tk.Frame(self.root, bg="#f5f5f5")
-        container.pack(fill=tk.BOTH, expand=True, padx=20, pady=15)
+        container = ttk.Frame(self.root)
+        container.pack(fill=tk.BOTH, expand=True, padx=15, pady=15)
 
-        # Style for notebook
-        style = ttk.Style()
-        style.theme_use("clam")
-        style.configure("TNotebook", background="#f5f5f5", borderwidth=0)
-        style.configure("TNotebook.Tab", padding=[20, 10], font=("Segoe UI", 10, "bold"))
-        style.map(
-            "TNotebook.Tab",
-            background=[("selected", "#1976D2")],
-            foreground=[("selected", "white")],
-        )
-
-        self.notebook = ttk.Notebook(container)
+        # Create notebook with modern styling
+        self.notebook = ttk.Notebook(container, bootstyle="dark")
         self.notebook.pack(fill=tk.BOTH, expand=True)
 
         # Tab 1: Upload D365 Files
         self.tab_d365 = ttk.Frame(self.notebook)
-        self.notebook.add(self.tab_d365, text="1. Upload D365 Files")
+        self.notebook.add(self.tab_d365, text="  📁 1. Upload D365 Files  ")
         self.setup_d365_tab()
 
         # Tab 2: Extract IDs
         self.tab_extract = ttk.Frame(self.notebook)
-        self.notebook.add(self.tab_extract, text="2. Extract IDs")
+        self.notebook.add(self.tab_extract, text="  🔍 2. Extract IDs  ")
         self.setup_extract_tab()
 
         # Tab 3: Upload SafeContractor Files
         self.tab_sc = ttk.Frame(self.notebook)
-        self.notebook.add(self.tab_sc, text="3. Upload SafeContractor Files")
+        self.notebook.add(self.tab_sc, text="  📊 3. Upload SC Files  ")
         self.setup_sc_tab()
 
         # Tab 4: Generate Comparisons
         self.tab_compare = ttk.Frame(self.notebook)
-        self.notebook.add(self.tab_compare, text="4. Generate Comparisons")
+        self.notebook.add(self.tab_compare, text="  🚀 4. Generate Reports  ")
         self.setup_compare_tab()
 
-        # Status bar
+        # Modern status bar with indicator
+        status_frame = tk.Frame(self.root, bg=self.colors['bg_card'], height=40)
+        status_frame.pack(side=tk.BOTTOM, fill=tk.X)
+        status_frame.pack_propagate(False)
+        
+        # Status indicator (green dot)
+        self.status_indicator = tk.Canvas(status_frame, width=12, height=12, bg=self.colors['bg_card'], highlightthickness=0)
+        self.status_indicator.pack(side=tk.LEFT, padx=(15, 8), pady=14)
+        self.status_dot = self.status_indicator.create_oval(2, 2, 10, 10, fill=self.colors['accent_green'], outline="")
+        
         self.status_var = tk.StringVar()
-        self.status_var.set("✓ Ready - Start by uploading D365 files")
-        status_bar = tk.Label(
-            self.root,
+        self.status_var.set("Ready - Start by uploading D365 files")
+        status_label = tk.Label(
+            status_frame,
             textvariable=self.status_var,
-            bd=0,
-            relief=tk.FLAT,
-            anchor=tk.W,
-            bg="#263238",
-            fg="white",
+            bg=self.colors['bg_card'],
+            fg=self.colors['text_primary'],
             font=("Segoe UI", 9),
-            pady=8,
-            padx=15,
+            anchor=tk.W,
         )
-        status_bar.pack(side=tk.BOTTOM, fill=tk.X)
+        status_label.pack(side=tk.LEFT, fill=tk.X, expand=True, pady=10)
 
     def setup_d365_tab(self):
         """Setup D365 file upload tab"""
-        self.tab_d365.configure(style="TFrame")
-
-        info_frame = tk.Frame(self.tab_d365, bg="#E3F2FD", relief=tk.FLAT)
+        # Info card
+        info_frame = tk.Frame(self.tab_d365, bg=self.colors['bg_card'], relief=tk.SOLID, bd=1)
         info_frame.pack(fill=tk.X, padx=20, pady=20)
 
         tk.Label(
             info_frame,
             text="📁 Upload Dynamics 365 Exports",
             font=("Segoe UI", 14, "bold"),
-            bg="#E3F2FD",
-            fg="#0D47A1",
+            bg=self.colors['bg_card'],
+            fg=self.colors['accent_blue'],
         ).pack(anchor=tk.W, padx=20, pady=(15, 5))
 
         instruction_text = "Drag & drop all 3 D365 files at once. The system will automatically detect Accreditation, WCB, and Client files."
@@ -144,256 +161,323 @@ class ComparisonApp:
         tk.Label(
             info_frame,
             text=instruction_text,
-            bg="#E3F2FD",
-            fg="#424242",
+            bg=self.colors['bg_card'],
+            fg=self.colors['text_secondary'],
             font=("Segoe UI", 10),
             wraplength=900,
             justify=tk.LEFT,
         ).pack(anchor=tk.W, padx=20, pady=(0, 15))
 
-        # Multi-file drop zone
-        multi_drop_frame = tk.Frame(self.tab_d365, bg="#f5f5f5")
+        # Enhanced drop zone with border
+        multi_drop_frame = ttk.Frame(self.tab_d365, padding=10)
         multi_drop_frame.pack(fill=tk.X, padx=20, pady=10)
 
         bulk_drop = tk.Frame(
             multi_drop_frame,
-            bg="#FFF8E1",
+            bg="#2a3f5f",
             relief=tk.SOLID,
             bd=2,
-            highlightbackground="#FFA726",
+            highlightbackground=self.colors['accent_blue'],
             highlightthickness=2,
-            height=100,
+            height=110,
         )
         bulk_drop.pack(fill=tk.X, pady=5)
         bulk_drop.pack_propagate(False)
 
-        # Configure drag and drop for multiple files
+        # Configure drag and drop
         bulk_drop.drop_target_register(DND_FILES)
         bulk_drop.dnd_bind("<<Drop>>", lambda e: self.handle_bulk_drop(e, "d365"))
-        bulk_drop.dnd_bind("<<DragEnter>>", lambda e, f=bulk_drop: self.on_drag_enter(e, f))
-        bulk_drop.dnd_bind("<<DragLeave>>", lambda e, f=bulk_drop: self.on_drag_leave(e, f))
+        bulk_drop.dnd_bind("<<DragEnter>>", lambda e, f=bulk_drop: self.on_drag_enter(e, f, "d365"))
+        bulk_drop.dnd_bind("<<DragLeave>>", lambda e, f=bulk_drop: self.on_drag_leave(e, f, "d365"))
 
         tk.Label(
             bulk_drop,
             text="🚀 DRAG & DROP ALL 3 D365 FILES HERE\n\nSystem will automatically identify Accreditation, WCB, and Client files",
-            bg="#FFF8E1",
-            fg="#E65100",
+            bg="#2a3f5f",
+            fg="#93c5fd",
             font=("Segoe UI", 11, "bold"),
             justify=tk.CENTER,
         ).pack(expand=True)
+        
+        ToolTip(bulk_drop, text="Drop Excel files (.xlsx, .xls) containing D365 export data", bootstyle="info")
 
-        # Process button
-        btn_frame = tk.Frame(self.tab_d365, bg="#f5f5f5")
-        btn_frame.pack(pady=30)
+        # Status indicators for files
+        status_frame = tk.Frame(self.tab_d365, bg=self.colors['bg_card'], bd=1, relief=tk.SOLID)
+        status_frame.pack(fill=tk.X, padx=20, pady=15)
+        
+        tk.Label(
+            status_frame,
+            text="File Upload Status:",
+            font=("Segoe UI", 10, "bold"),
+            bg=self.colors['bg_card'],
+            fg=self.colors['text_primary']
+        ).pack(anchor=tk.W, padx=15, pady=(10, 5))
+        
+        self.d365_status_labels = {}
+        for report_type, display_name in [("accreditation", "Accreditation"), ("wcb", "WCB"), ("client", "Client Specific")]:
+            row = tk.Frame(status_frame, bg=self.colors['bg_card'])
+            row.pack(fill=tk.X, padx=15, pady=3)
+            
+            indicator = tk.Canvas(row, width=10, height=10, bg=self.colors['bg_card'], highlightthickness=0)
+            indicator.pack(side=tk.LEFT, padx=(0, 8))
+            indicator.create_oval(2, 2, 8, 8, fill="#6b7280", outline="")
+            
+            label = tk.Label(row, text=f"{display_name}: Not uploaded", bg=self.colors['bg_card'], fg=self.colors['text_secondary'], font=("Segoe UI", 9))
+            label.pack(side=tk.LEFT)
+            
+            self.d365_status_labels[report_type] = {"indicator": indicator, "label": label}
+        
+        tk.Label(status_frame, text="", bg=self.colors['bg_card']).pack(pady=5)
 
-        self.btn_process_d365 = tk.Button(
+        # Action button with modern styling
+        btn_frame = ttk.Frame(self.tab_d365)
+        btn_frame.pack(pady=25)
+
+        self.btn_process_d365 = ttk.Button(
             btn_frame,
             text="✓ Save D365 Files & Continue",
             command=self.save_d365_files,
-            bg="#1976D2",
-            fg="white",
-            font=("Segoe UI", 12, "bold"),
-            width=28,
-            height=2,
-            cursor="hand2",
-            relief=tk.FLAT,
-            activebackground="#1565C0",
-            activeforeground="white",
-            state=tk.DISABLED,
-            disabledforeground="#BDBDBD",
+            bootstyle="primary",
+            width=35,
+            state=tk.DISABLED
         )
         self.btn_process_d365.pack()
+        
+        ToolTip(self.btn_process_d365, text="Save uploaded D365 files and proceed to ID extraction", bootstyle="primary")
 
     def setup_extract_tab(self):
         """Setup ID extraction tab"""
-        info_frame = tk.Frame(self.tab_extract, bg="#FFF9C4", relief=tk.FLAT)
+        # Info card
+        info_frame = tk.Frame(self.tab_extract, bg=self.colors['bg_card'], relief=tk.SOLID, bd=1)
         info_frame.pack(fill=tk.X, padx=20, pady=20)
 
         tk.Label(
             info_frame,
             text="🔍 Extract IDs for Redash Queries",
             font=("Segoe UI", 14, "bold"),
-            bg="#FFF9C4",
-            fg="#F57F17",
+            bg=self.colors['bg_card'],
+            fg=self.colors['accent_orange'],
         ).pack(anchor=tk.W, padx=20, pady=(15, 5))
 
         tk.Label(
             info_frame,
             text="Extract and format Global Alcumus IDs from D365 files. The formatted IDs will be ready to copy into Redash queries.",
-            bg="#FFF9C4",
-            fg="#424242",
+            bg=self.colors['bg_card'],
+            fg=self.colors['text_secondary'],
             font=("Segoe UI", 10),
             wraplength=850,
             justify=tk.LEFT,
-        ).pack(anchor=tk.W, pady=(5, 0))
+        ).pack(anchor=tk.W, padx=20, pady=(5, 15))
 
-        # Extract button
-        btn_frame = tk.Frame(self.tab_extract)
+        # Action button with progress bar
+        btn_frame = ttk.Frame(self.tab_extract)
         btn_frame.pack(pady=20)
 
-        self.btn_extract = tk.Button(
+        self.btn_extract = ttk.Button(
             btn_frame,
             text="⚙️ Extract IDs",
             command=self.extract_ids,
-            bg="#FF9800",
-            fg="white",
-            font=("Arial", 11, "bold"),
-            width=30,
-            height=2,
-            cursor="hand2",
+            bootstyle="warning",
+            width=35,
         )
         self.btn_extract.pack()
+        
+        ToolTip(self.btn_extract, text="Extract Global Alcumus IDs from uploaded D365 files", bootstyle="warning")
+        
+        # Progress bar (hidden by default)
+        self.extract_progress = ttk.Progressbar(btn_frame, bootstyle="warning-striped", mode="indeterminate", length=300)
+        # Don't pack it yet, will show when processing
 
-        # Output console
-        console_label = tk.Label(self.tab_extract, text="Output:", font=("Arial", 10, "bold"))
-        console_label.pack(anchor=tk.W, padx=15, pady=(20, 5))
+        # Modern console output
+        console_label = tk.Label(
+            self.tab_extract, 
+            text="Output:", 
+            font=("Segoe UI", 10, "bold"),
+            bg=self.colors['bg_dark'],
+            fg=self.colors['text_primary']
+        )
+        console_label.pack(anchor=tk.W, padx=20, pady=(20, 5))
 
         self.extract_console = scrolledtext.ScrolledText(
             self.tab_extract,
             height=20,
-            bg="#1e1e1e",
-            fg="#00ff00",
+            bg="#0d1117",
+            fg="#58a6ff",
             font=("Consolas", 9),
             wrap=tk.WORD,
+            insertbackground="#58a6ff",
+            selectbackground="#1f6feb",
+            relief=tk.SOLID,
+            bd=1,
         )
-        self.extract_console.pack(fill=tk.BOTH, expand=True, padx=15, pady=(0, 15))
-
-        # Open output folder button
-        tk.Button(
-            self.tab_extract,
-            text="📁 Open Output Folder",
-            command=lambda: self.open_folder(OUTPUT_DIR),
-            bg="#607D8B",
-            fg="white",
-            font=("Arial", 10),
-            cursor="hand2",
-        ).pack(pady=10)
+        self.extract_console.pack(fill=tk.BOTH, expand=True, padx=20, pady=(0, 15))
 
     def setup_sc_tab(self):
         """Setup SafeContractor file upload tab"""
-        info_frame = tk.Frame(self.tab_sc, bg="#E8F5E9", relief=tk.FLAT)
+        # Info card
+        info_frame = tk.Frame(self.tab_sc, bg=self.colors['bg_card'], relief=tk.SOLID, bd=1)
         info_frame.pack(fill=tk.X, padx=20, pady=20)
 
         tk.Label(
             info_frame,
             text="📊 Upload SafeContractor (Redash) Exports",
             font=("Segoe UI", 14, "bold"),
-            bg="#E8F5E9",
-            fg="#1B5E20",
+            bg=self.colors['bg_card'],
+            fg=self.colors['accent_green'],
         ).pack(anchor=tk.W, padx=20, pady=(15, 5))
 
         tk.Label(
             info_frame,
             text="Drag & drop all 3 SafeContractor files at once. The system will automatically detect Accreditation, WCB, and Client files.",
-            bg="#E8F5E9",
-            fg="#424242",
+            bg=self.colors['bg_card'],
+            fg=self.colors['text_secondary'],
             font=("Segoe UI", 10),
             wraplength=900,
             justify=tk.LEFT,
         ).pack(anchor=tk.W, padx=20, pady=(0, 15))
 
-        # Multi-file drop zone
-        multi_drop_frame = tk.Frame(self.tab_sc, padx=15)
-        multi_drop_frame.pack(fill=tk.X, pady=(10, 5))
+        # Enhanced drop zone
+        multi_drop_frame = ttk.Frame(self.tab_sc, padding=10)
+        multi_drop_frame.pack(fill=tk.X, padx=20, pady=10)
 
-        bulk_drop = tk.Frame(multi_drop_frame, bg="#fff3cd", relief=tk.RIDGE, bd=3, height=80)
+        bulk_drop = tk.Frame(
+            multi_drop_frame, 
+            bg="#1f3a2c", 
+            relief=tk.SOLID, 
+            bd=2,
+            highlightbackground=self.colors['accent_green'],
+            highlightthickness=2,
+            height=110
+        )
         bulk_drop.pack(fill=tk.X, pady=5)
         bulk_drop.pack_propagate(False)
 
-        # Configure drag and drop for multiple files
+        # Configure drag and drop
         bulk_drop.drop_target_register(DND_FILES)
         bulk_drop.dnd_bind("<<Drop>>", lambda e: self.handle_bulk_drop(e, "sc"))
-        bulk_drop.dnd_bind("<<DragEnter>>", lambda e, f=bulk_drop: self.on_drag_enter(e, f))
-        bulk_drop.dnd_bind("<<DragLeave>>", lambda e, f=bulk_drop: self.on_drag_leave(e, f))
+        bulk_drop.dnd_bind("<<DragEnter>>", lambda e, f=bulk_drop: self.on_drag_enter(e, f, "sc"))
+        bulk_drop.dnd_bind("<<DragLeave>>", lambda e, f=bulk_drop: self.on_drag_leave(e, f, "sc"))
 
         tk.Label(
             bulk_drop,
-            text="🚀 QUICK: Drag & Drop All 3 SafeContractor Files Here\n(System will auto-detect Accreditation, WCB, and Client files)",
-            bg="#fff3cd",
-            fg="#856404",
-            font=("Arial", 10, "bold"),
+            text="🚀 DRAG & DROP ALL 3 SAFECONTRACTOR FILES HERE\n(System will auto-detect Accreditation, WCB, and Client files)",
+            bg="#1f3a2c",
+            fg="#6ee7b7",
+            font=("Segoe UI", 11, "bold"),
             justify=tk.CENTER,
         ).pack(expand=True)
+        
+        ToolTip(bulk_drop, text="Drop Excel files from Redash query results", bootstyle="success")
 
-        # Process button
-        btn_frame = tk.Frame(self.tab_sc)
-        btn_frame.pack(pady=20)
+        # Status indicators
+        status_frame = tk.Frame(self.tab_sc, bg=self.colors['bg_card'], bd=1, relief=tk.SOLID)
+        status_frame.pack(fill=tk.X, padx=20, pady=15)
+        
+        tk.Label(
+            status_frame,
+            text="File Upload Status:",
+            font=("Segoe UI", 10, "bold"),
+            bg=self.colors['bg_card'],
+            fg=self.colors['text_primary']
+        ).pack(anchor=tk.W, padx=15, pady=(10, 5))
+        
+        self.sc_status_labels = {}
+        for report_type, display_name in [("accreditation", "Accreditation"), ("wcb", "WCB"), ("client", "Client Specific")]:
+            row = tk.Frame(status_frame, bg=self.colors['bg_card'])
+            row.pack(fill=tk.X, padx=15, pady=3)
+            
+            indicator = tk.Canvas(row, width=10, height=10, bg=self.colors['bg_card'], highlightthickness=0)
+            indicator.pack(side=tk.LEFT, padx=(0, 8))
+            indicator.create_oval(2, 2, 8, 8, fill="#6b7280", outline="")
+            
+            label = tk.Label(row, text=f"{display_name}: Not uploaded", bg=self.colors['bg_card'], fg=self.colors['text_secondary'], font=("Segoe UI", 9))
+            label.pack(side=tk.LEFT)
+            
+            self.sc_status_labels[report_type] = {"indicator": indicator, "label": label}
+        
+        tk.Label(status_frame, text="", bg=self.colors['bg_card']).pack(pady=5)
 
-        self.btn_process_sc = tk.Button(
+        # Action button
+        btn_frame = ttk.Frame(self.tab_sc)
+        btn_frame.pack(pady=25)
+
+        self.btn_process_sc = ttk.Button(
             btn_frame,
             text="✅ Save SafeContractor Files & Proceed",
             command=self.save_sc_files,
-            bg="#2196F3",
-            fg="white",
-            font=("Arial", 11, "bold"),
-            width=30,
-            height=2,
-            cursor="hand2",
+            bootstyle="success",
+            width=35,
             state=tk.DISABLED,
         )
         self.btn_process_sc.pack()
+        
+        ToolTip(self.btn_process_sc, text="Save uploaded SC files and proceed to comparison", bootstyle="success")
 
     def setup_compare_tab(self):
         """Setup comparison generation tab"""
-        info_frame = tk.Frame(self.tab_compare, bg="#f3e5f5", padx=15, pady=15)
-        info_frame.pack(fill=tk.X, padx=10, pady=10)
+        # Info card
+        info_frame = tk.Frame(self.tab_compare, bg=self.colors['bg_card'], relief=tk.SOLID, bd=1)
+        info_frame.pack(fill=tk.X, padx=20, pady=20)
 
         tk.Label(
             info_frame,
             text="📊 Generate Status Comparison Files",
-            font=("Arial", 12, "bold"),
-            bg="#f3e5f5",
-        ).pack(anchor=tk.W)
+            font=("Segoe UI", 14, "bold"),
+            bg=self.colors['bg_card'],
+            fg=self.colors['accent_purple'],
+        ).pack(anchor=tk.W, padx=20, pady=(15, 5))
 
         tk.Label(
             info_frame,
             text="Click below to generate the final comparison Excel files with status matching and differences.",
-            bg="#f3e5f5",
+            bg=self.colors['bg_card'],
+            fg=self.colors['text_secondary'],
+            font=("Segoe UI", 10),
             wraplength=850,
             justify=tk.LEFT,
-        ).pack(anchor=tk.W, pady=(5, 0))
+        ).pack(anchor=tk.W, padx=20, pady=(5, 15))
 
-        # Generate button
-        btn_frame = tk.Frame(self.tab_compare)
+        # Action button with progress
+        btn_frame = ttk.Frame(self.tab_compare)
         btn_frame.pack(pady=20)
 
-        self.btn_compare = tk.Button(
+        self.btn_compare = ttk.Button(
             btn_frame,
             text="🚀 Generate Comparisons",
             command=self.generate_comparison,
-            bg="#9C27B0",
-            fg="white",
-            font=("Arial", 11, "bold"),
-            width=30,
-            height=2,
-            cursor="hand2",
+            bootstyle="info",
+            width=35,
         )
         self.btn_compare.pack()
+        
+        ToolTip(self.btn_compare, text="Generate Excel comparison reports with status analysis", bootstyle="info")
+        
+        # Progress bar (hidden by default)
+        self.compare_progress = ttk.Progressbar(btn_frame, bootstyle="info-striped", mode="indeterminate", length=300)
 
-        # Output console
-        console_label = tk.Label(self.tab_compare, text="Output:", font=("Arial", 10, "bold"))
-        console_label.pack(anchor=tk.W, padx=15, pady=(20, 5))
+        # Modern console output
+        console_label = tk.Label(
+            self.tab_compare, 
+            text="Output:", 
+            font=("Segoe UI", 10, "bold"),
+            bg=self.colors['bg_dark'],
+            fg=self.colors['text_primary']
+        )
+        console_label.pack(anchor=tk.W, padx=20, pady=(20, 5))
 
         self.compare_console = scrolledtext.ScrolledText(
             self.tab_compare,
             height=20,
-            bg="#1e1e1e",
-            fg="#00ff00",
+            bg="#0d1117",
+            fg="#58a6ff",
             font=("Consolas", 9),
             wrap=tk.WORD,
+            insertbackground="#58a6ff",
+            selectbackground="#1f6feb",
+            relief=tk.SOLID,
+            bd=1,
         )
-        self.compare_console.pack(fill=tk.BOTH, expand=True, padx=15, pady=(0, 15))
-
-        # Open output folder button
-        tk.Button(
-            self.tab_compare,
-            text="📁 Open Output Folder",
-            command=lambda: self.open_folder(OUTPUT_DIR),
-            bg="#607D8B",
-            fg="white",
-            font=("Arial", 10),
-            cursor="hand2",
-        ).pack(pady=10)
+        self.compare_console.pack(fill=tk.BOTH, expand=True, padx=20, pady=(0, 15))
 
     def classify_file(self, file_path, file_type_suffix):
         """
@@ -447,6 +531,9 @@ class ComparisonApp:
             # Update uploaded files and UI
             for key, file_path in classified.items():
                 self.uploaded_files[key] = file_path
+                # Update status indicators
+                report_type = key.replace(f"_{suffix}", "")
+                self.update_file_status(report_type, suffix, True)
 
             # Show results
             if classified:
@@ -461,6 +548,7 @@ class ComparisonApp:
                         report += f"  • {name}\n"
 
                 messagebox.showinfo("Files Classified", report)
+                self.update_status_indicator("success")
             else:
                 messagebox.showerror(
                     "Classification Failed",
@@ -470,6 +558,7 @@ class ComparisonApp:
                     f"  • 'wcb' for WCB\n"
                     f"  • 'cs' or 'client' for Client Specific",
                 )
+                self.update_status_indicator("error")
 
             # Check if we can enable process buttons
             self.check_upload_status()
@@ -480,20 +569,54 @@ class ComparisonApp:
 
             traceback.print_exc()
             messagebox.showerror("Error", f"Error processing dropped files: {e}")
+            self.update_status_indicator("error")
 
     def parse_dropped_files(self, data):
         """Parse file paths from drag-and-drop event data"""
+        import re
+        
         file_paths = []
         data = data.strip()
 
-        # Handle multiple files (separated by spaces, wrapped in {})
+        # Handle mixed braced and non-braced files
         if "{" in data:
-            # Split by '} {' to handle multiple files with braces
-            parts = data.split("} {")
-            for part in parts:
-                part = part.strip("{}").strip()
-                if part and Path(part).exists():
-                    file_paths.append(part)
+            # More robust parsing for mixed formats
+            # Example: "file1 {file2} file3" or "{file1} {file2} {file3}"
+            
+            # First extract braced files
+            braced_pattern = r'\{([^}]+)\}'
+            braced_files = re.findall(braced_pattern, data)
+            
+            for bf in braced_files:
+                if Path(bf).exists():
+                    file_paths.append(bf)
+            
+            # Remove braced sections to find non-braced files
+            remaining = re.sub(braced_pattern, '', data).strip()
+            # Also remove the extra braces themselves
+            remaining = remaining.replace('{}', '').strip()
+            
+            if remaining:
+                # Split remaining by spaces (careful with paths that have spaces)
+                parts = remaining.split()
+                current_path = ""
+                
+                for part in parts:
+                    if current_path:
+                        test_path = current_path + " " + part
+                        if Path(test_path).exists():
+                            current_path = test_path
+                        elif Path(current_path).exists():
+                            file_paths.append(current_path)
+                            current_path = part
+                        else:
+                            current_path = test_path
+                    else:
+                        current_path = part
+                
+                if current_path and Path(current_path).exists():
+                    file_paths.append(current_path)
+
         else:
             # Files without braces - split by space and handle paths with spaces
             # Windows paths can have spaces, so we need to be smart about splitting
@@ -519,7 +642,7 @@ class ComparisonApp:
             # Don't forget the last path
             if current_path and Path(current_path).exists():
                 file_paths.append(current_path)
-
+        
         return file_paths
 
     def handle_drop(self, event, file_key):
@@ -567,27 +690,68 @@ class ComparisonApp:
             traceback.print_exc()
             messagebox.showerror("Error", f"Error processing dropped file: {e}")
 
-    def on_drag_enter(self, event, frame):
-        """Visual feedback when dragging over drop zone"""
-        # Get current background to determine type
+    def on_drag_enter(self, event, frame, file_type):
+        """Visual feedback when dragging over drop zone - smooth animation"""
         current_bg = str(frame["bg"])
-        if current_bg in ("#e8f5e9", "#c8e6c9"):  # D365 colors
-            frame.config(bg="#81c784")
-        elif current_bg in ("#e3f2fd", "#bbdefb"):  # SC colors
-            frame.config(bg="#64b5f6")
-        elif current_bg == "#fff3cd":  # Bulk drop zone
-            frame.config(bg="#ffe082")
+        
+        if file_type == "d365":
+            frame.config(bg="#3b5a7f")  # Brighter blue on hover
+        elif file_type == "sc":
+            frame.config(bg="#2d5a43")  # Brighter green on hover
 
-    def on_drag_leave(self, event, frame):
+    def on_drag_leave(self, event, frame, file_type):
         """Reset visual when leaving drop zone"""
-        # Restore original color based on current state
-        current_bg = str(frame["bg"])
-        if current_bg == "#81c784":  # Was D365 hover
-            frame.config(bg="#e8f5e9")
-        elif current_bg == "#64b5f6":  # Was SC hover
-            frame.config(bg="#e3f2fd")
-        elif current_bg == "#ffe082":  # Was bulk hover
-            frame.config(bg="#fff3cd")
+        if file_type == "d365":
+            frame.config(bg="#2a3f5f")  # Original D365 blue
+        elif file_type == "sc":
+            frame.config(bg="#1f3a2c")  # Original SC green
+
+    def update_file_status(self, report_type, file_type, uploaded):
+        """Update file status indicators with colored dots"""
+        print(f"\n=== UPDATE_FILE_STATUS ===")
+        print(f"Report Type: {report_type}")
+        print(f"File Type: {file_type}")
+        print(f"Uploaded: {uploaded}")
+        
+        status_dict = self.d365_status_labels if file_type == "d365" else self.sc_status_labels
+        print(f"Status dict keys: {list(status_dict.keys())}")
+        
+        if report_type in status_dict:
+            print(f"  \u2713 Report type found in status dict")
+            indicator = status_dict[report_type]["indicator"]
+            label = status_dict[report_type]["label"]
+            
+            if uploaded:
+                # Green dot for uploaded
+                indicator.delete("all")
+                indicator.create_oval(2, 2, 8, 8, fill=self.colors['accent_green'], outline="")
+                label.config(text=f"{report_type.replace('_', ' ').title()}: ✓ Uploaded", fg=self.colors['text_primary'])
+                print(f"  Updated to GREEN (uploaded)")
+            else:
+                # Gray dot for not uploaded
+                indicator.delete("all")
+                indicator.create_oval(2, 2, 8, 8, fill="#6b7280", outline="")
+                label.config(text=f"{report_type.replace('_', ' ').title()}: Not uploaded", fg=self.colors['text_secondary'])
+                print(f"  Updated to GRAY (not uploaded)")
+            
+            # Force UI update
+            indicator.update_idletasks()
+            label.update_idletasks()
+        else:
+            print(f"  \u2717 WARNING: {report_type} NOT FOUND in status dict!")
+    
+    def update_status_indicator(self, status_type):
+        """Update the main status bar indicator dot"""
+        if status_type == "success":
+            self.status_indicator.itemconfig(self.status_dot, fill=self.colors['accent_green'])
+        elif status_type == "error":
+            self.status_indicator.itemconfig(self.status_dot, fill="#ef4444")
+        elif status_type == "warning":
+            self.status_indicator.itemconfig(self.status_dot, fill=self.colors['accent_orange'])
+        elif status_type == "processing":
+            self.status_indicator.itemconfig(self.status_dot, fill=self.colors['accent_blue'])
+        else:  # idle
+            self.status_indicator.itemconfig(self.status_dot, fill="#6b7280")
 
     def check_upload_status(self):
         """Check if all required files are uploaded and enable buttons"""
@@ -607,21 +771,72 @@ class ComparisonApp:
 
     def check_existing_files(self):
         """Check for existing files in input folder and mark as uploaded"""
-        INPUT_DIR.mkdir(exist_ok=True)
-
-        for key, filename in {**D365_FILES, **SC_FILES}.items():
-            file_path = INPUT_DIR / filename
+        DYNAMICS_DIR.mkdir(parents=True, exist_ok=True)
+        REDASH_DIR.mkdir(parents=True, exist_ok=True)
+        
+        # Check for D365 files in dynamics directory
+        for key, filename in D365_FILES.items():
+            file_path = DYNAMICS_DIR / filename
             if file_path.exists():
-                self.uploaded_files[key] = str(file_path)
-
+                full_key = f"{key}_d365"
+                self.uploaded_files[full_key] = str(file_path)
+                self.update_file_status(key, "d365", True)
+        
+        # Check for SC files in redash directory
+        for key, filename in SC_FILES.items():
+            file_path = REDASH_DIR / filename
+            if file_path.exists():
+                full_key = f"{key}_sc"
+                self.uploaded_files[full_key] = str(file_path)
+                self.update_file_status(key, "sc", True)
+        
         # Update button states after checking
         self.check_upload_status()
+        
+        # Update status bar with detected files
+        d365_count = sum(1 for k, v in self.uploaded_files.items() if "_d365" in k and v is not None)
+        sc_count = sum(1 for k, v in self.uploaded_files.items() if "_sc" in k and v is not None)
+        if d365_count > 0 or sc_count > 0:
+            self.status_var.set(f"Loaded {d365_count} D365 file(s) and {sc_count} SC file(s) from disk")
+
+    def cleanup_files(self):
+        """Delete all uploaded files from input directories"""
+        try:
+            deleted_count = 0
+            
+            # Delete D365 files
+            if DYNAMICS_DIR.exists():
+                for file in DYNAMICS_DIR.glob('*.xlsx'):
+                    try:
+                        file.unlink()
+                        deleted_count += 1
+                    except Exception as e:
+                        print(f"Error deleting {file.name}: {e}")
+            
+            # Delete SC files
+            if REDASH_DIR.exists():
+                for file in REDASH_DIR.glob('*.xlsx'):
+                    try:
+                        file.unlink()
+                        deleted_count += 1
+                    except Exception as e:
+                        print(f"Error deleting {file.name}: {e}")
+            
+            if deleted_count > 0:
+                print(f"Cleaned up {deleted_count} file(s)")
+        except Exception as e:
+            print(f"Error during cleanup: {e}")
+
+    def on_closing(self):
+        """Handle window close event"""
+        self.cleanup_files()
+        self.root.destroy()
 
     def save_d365_files(self):
         """Copy D365 files to input folder"""
         try:
             DYNAMICS_DIR.mkdir(parents=True, exist_ok=True)
-
+            
             for key in ["accreditation_d365", "wcb_d365", "client_d365"]:
                 if self.uploaded_files[key]:
                     source = Path(self.uploaded_files[key])
@@ -647,15 +862,17 @@ class ComparisonApp:
             # Always go to Extract IDs tab in manual mode
             self.notebook.select(1)  # Switch to Extract IDs tab
             self.status_var.set("D365 files saved - Ready to extract IDs")
+            self.update_status_indicator("success")
 
         except Exception as e:
             messagebox.showerror("Error", f"Failed to save files:\n{e}")
+            self.update_status_indicator("error")
 
     def save_sc_files(self):
         """Copy SafeContractor files to input folder"""
         try:
             REDASH_DIR.mkdir(parents=True, exist_ok=True)
-
+            
             for key in ["accreditation_sc", "wcb_sc", "client_sc"]:
                 if self.uploaded_files[key]:
                     source = Path(self.uploaded_files[key])
@@ -679,15 +896,22 @@ class ComparisonApp:
             )
             self.notebook.select(3)  # Switch to Generate Comparisons tab
             self.status_var.set("SC files saved - Ready to generate comparisons")
+            self.update_status_indicator("success")
 
         except Exception as e:
             messagebox.showerror("Error", f"Failed to save files:\n{e}")
+            self.update_status_indicator("error")
 
     def extract_ids(self):
         """Run ID extraction in background thread"""
         self.btn_extract.config(state=tk.DISABLED, text="⏳ Extracting...")
         self.extract_console.delete(1.0, tk.END)
         self.status_var.set("Extracting IDs...")
+        self.update_status_indicator("processing")
+        
+        # Show and start progress bar
+        self.extract_progress.pack(pady=10)
+        self.extract_progress.start()
 
         def run_extraction():
             # Redirect stdout to console
@@ -713,22 +937,31 @@ class ComparisonApp:
         self.extract_console.insert(tk.END, output)
         self.extract_console.see(tk.END)
         self.btn_extract.config(state=tk.NORMAL, text="⚙️ Extract IDs")
+        
+        # Hide and stop progress bar
+        self.extract_progress.stop()
+        self.extract_progress.pack_forget()
 
         if "Error" in output or "❌" in output:
             self.status_var.set("ID extraction failed - Check console for errors")
+            self.update_status_indicator("error")
             messagebox.showerror(
                 "Error", "ID extraction failed. Check the console output for details."
             )
         else:
             self.status_var.set("IDs extracted successfully!")
+            self.update_status_indicator("success")
+            
+            # Automatically open the query_ids folder
+            self.open_folder(QUERY_IDS_DIR)
+            
             messagebox.showinfo(
                 "Success",
                 f"{Messages.SUCCESS} IDs extracted successfully!\n\n"
                 "Next steps:\n"
-                "1. Open the output folder\n"
-                "2. Copy IDs from .sql.txt files\n"
-                "3. Run Redash queries\n"
-                "4. Upload SC results in the next tab",
+                "1. Copy IDs from .sql.txt files (folder opened)\n"
+                "2. Run Redash queries with those IDs\n"
+                "3. Upload SC results in the next tab",
             )
             self.notebook.select(2)  # Switch to Upload SC tab
 
@@ -810,19 +1043,28 @@ class ComparisonApp:
         self.compare_console.insert(tk.END, output)
         self.compare_console.see(tk.END)
         self.btn_compare.config(state=tk.NORMAL, text="🚀 Generate Comparisons")
+        
+        # Hide and stop progress bar
+        self.compare_progress.stop()
+        self.compare_progress.pack_forget()
 
         if "Error" in output or "❌" in output:
             self.status_var.set("Comparison generation failed - Check console for errors")
+            self.update_status_indicator("error")
             messagebox.showerror(
                 "Error", "Comparison generation failed. Check the console output for details."
             )
         else:
             self.status_var.set("Comparisons generated successfully!")
+            self.update_status_indicator("success")
+            
+            # Automatically open the output folder
+            self.open_folder(OUTPUT_DIR)
+            
             messagebox.showinfo(
                 "Success",
                 f"{Messages.SUCCESS} Comparison files generated successfully!\n\n"
-                "The Excel files are ready in the output folder.\n"
-                "Click 'Open Output Folder' to view them.",
+                "The Excel files are ready in the output folder (opened automatically).",
             )
 
     def open_folder(self, folder_path):
@@ -830,7 +1072,7 @@ class ComparisonApp:
         import os
         import subprocess
 
-        folder_path.mkdir(exist_ok=True)
+        folder_path.mkdir(parents=True, exist_ok=True)
 
         if sys.platform == "win32":
             os.startfile(folder_path)
@@ -842,7 +1084,15 @@ class ComparisonApp:
 
 def main():
     """Launch the GUI application"""
-    root = TkinterDnD.Tk()  # Use TkinterDnD root instead of regular Tk
+    # Create TkinterDnD root first, then apply ttkbootstrap theme
+    root = TkinterDnD.Tk()
+    
+    # Apply ttkbootstrap dark theme to existing window
+    style = ttk.Style("darkly")
+    root.title("D365 vs SafeContractor - Status Comparison Tool")
+    root.geometry("1100x850")
+    root.resizable(True, True)
+    
     app = ComparisonApp(root)
     root.mainloop()
 

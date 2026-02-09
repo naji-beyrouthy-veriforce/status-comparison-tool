@@ -157,8 +157,8 @@ def extract_and_save_ids():
         # Format for SQL
         sql_formatted = format_ids_for_sql(unique_ids)
 
-        # Save to file in query_ids subfolder
-        QUERY_IDS_DIR.mkdir(exist_ok=True)
+        # Save to file in query_ids subfolder (create parent dirs if needed)
+        QUERY_IDS_DIR.mkdir(parents=True, exist_ok=True)
 
         output_file = QUERY_IDS_DIR / f"{report_type}_ids.sql.txt"
 

@@ -10,6 +10,7 @@ import pandas as pd
 import warnings
 import sys
 import time
+import logging
 from datetime import datetime
 from pathlib import Path
 from openpyxl import Workbook
@@ -41,7 +42,11 @@ from config import (
     FILE_SAVE_RETRY_DELAY_SECONDS,
     CLIENT_STATUS_COLUMN,
     Messages,
+    setup_logging,
 )
+
+# Setup logging
+logger = setup_logging("comparison_tool", console_output=True, file_output=True)
 
 # Import utility functions
 from utils import (
@@ -62,12 +67,16 @@ def extract_and_save_ids():
     """
     Step 1: Extract IDs from D365 files and save SQL-ready lists
     """
+    logger.info("=" * 70)
+    logger.info("STEP 1: EXTRACTING IDs FROM D365 FILES")
+    logger.info("=" * 70)
     print("\n" + "=" * 70)
     print("STEP 1: EXTRACTING IDs FROM D365 FILES")
     print("=" * 70)
 
     # Process Accreditation and WCB only (Client doesn't need ID extraction)
     for report_type in ["accreditation", "wcb"]:
+        logger.info(f"Processing {report_type} for ID extraction")
         print(Messages.processing(report_type))
 
         # Find D365 file by pattern in dynamics subdirectory
@@ -77,6 +86,7 @@ def extract_and_save_ids():
             file_path = find_file_by_pattern(DYNAMICS_DIR, D365_PATTERNS[report_type])
 
         if not file_path:
+            logger.warning(f"No D365 {report_type} file found")
             print(Messages.warning(Messages.FILE_NOT_FOUND.format(report_type=report_type)))
             print(f"     {Messages.LOOKING_FOR.format(patterns=D365_PATTERNS[report_type])}")
             continue
@@ -84,6 +94,7 @@ def extract_and_save_ids():
         # Validate file format
         is_valid, error_msg, suggested_fix = validate_file_format(file_path)
         if not is_valid:
+            logger.error(f"File validation failed for {file_path.name}: {error_msg}")
             print(Messages.error(error_msg))
             if suggested_fix:
                 print(Messages.suggestion(suggested_fix))
@@ -92,11 +103,13 @@ def extract_and_save_ids():
         # Read file with enhanced error handling
         df, error_msg, suggested_fix = safe_read_excel(file_path)
         if error_msg:
+            logger.error(f"Failed to read {file_path.name}: {error_msg}")
             print(Messages.error(f"reading {file_path.name}: {error_msg}"))
             if suggested_fix:
                 print(Messages.suggestion(suggested_fix))
             continue
 
+        logger.info(f"Successfully read {len(df)} rows from {file_path.name}")
         print(Messages.success(Messages.READ_ROWS.format(count=len(df), filename=file_path.name)))
 
         # Validate DataFrame structure
@@ -113,6 +126,7 @@ def extract_and_save_ids():
         id_col = find_column_by_keywords(df.columns, ("global", "alcumus", "id"))
 
         if not id_col:
+            logger.error(f"Global Alcumus ID column not found in {file_path.name}")
             print(Messages.error(Messages.COLUMN_NOT_FOUND))
             available = ", ".join([f"'{col}'" for col in df.columns])
             print(f"     {Messages.AVAILABLE_COLUMNS.format(columns=available)}")
@@ -122,6 +136,7 @@ def extract_and_save_ids():
         # Validate UUID data quality
         is_valid, msg, fix, uuid_stats = validate_uuid_data(df, id_col, file_path.name)
         if not is_valid:
+            logger.error(f"UUID validation failed: {msg}")
             print(Messages.error(msg))
             if fix:
                 print(Messages.suggestion(fix))
@@ -145,12 +160,14 @@ def extract_and_save_ids():
 
         # Final validation
         if len(unique_ids) == 0:
+            logger.error(f"No valid UUIDs extracted from {id_col} column")
             print(Messages.error(Messages.NO_VALID_UUIDS.format(column=id_col)))
             sample_values = df[id_col].head(3).tolist()
             print(f"     {Messages.SAMPLE_VALUES.format(values=sample_values)}")
             print(Messages.suggestion(Messages.CHECK_COLUMN))
             continue
 
+        logger.info(f"Extracted {len(unique_ids)} unique IDs from {report_type}")
         print(Messages.success(Messages.EXTRACTED_IDS.format(count=len(unique_ids))))
         print(Messages.success(Messages.USING_FRESH_IDS))
 
@@ -165,6 +182,7 @@ def extract_and_save_ids():
         with open(output_file, "w") as f:
             f.write(sql_formatted)
 
+        logger.info(f"Saved {len(unique_ids)} IDs to {output_file.name}")
         print(Messages.success(Messages.SAVED_TO.format(filename=output_file.name)))
 
         # Show preview
@@ -175,6 +193,7 @@ def extract_and_save_ids():
         if len(lines) > 5:
             print(f"    {Messages.AND_MORE.format(count=len(lines) - 5)}")
 
+    logger.info("ID extraction completed successfully")
     print("\n" + "=" * 70)
     print("✅ ID EXTRACTION COMPLETED!")
     print("")
@@ -190,6 +209,8 @@ def extract_and_save_ids():
 def create_comparison_excel(report_type, df_d365, df_sc, include_qual_url=False):
     """
     Create comparison Excel file with SC and D365 sheets.
+    
+    Logs all major operations and data quality metrics.
 
     COMPARISON LOGIC:
     ========================================================
@@ -216,6 +237,7 @@ def create_comparison_excel(report_type, df_d365, df_sc, include_qual_url=False)
     Returns:
         Path to created Excel file, or None if creation failed
     """
+    logger.info(f"Creating comparison for {report_type}: D365={len(df_d365)} rows, SC={len(df_sc)} rows")
     print(
         Messages.info(
             Messages.CREATING_COMPARISON.format(report_type=report_type)
@@ -235,6 +257,7 @@ def create_comparison_excel(report_type, df_d365, df_sc, include_qual_url=False)
     )
 
     if not id_col_d365 or not status_col_d365:
+        logger.error(f"Missing required D365 columns - ID: {id_col_d365}, Status: {status_col_d365}")
         print(f"     {Messages.MISSING_COLUMNS}")
         print(f"        ID column: {id_col_d365}")
         print(f"        Status column: {status_col_d365}")
@@ -286,9 +309,13 @@ def create_comparison_excel(report_type, df_d365, df_sc, include_qual_url=False)
 
     # Check for matches
     common_ids = set(df_d365["clean_id"].dropna()) & set(df_sc["clean_id"].dropna())
+    logger.info(f"Found {len(common_ids)} common IDs between D365 and SC for {report_type}")
     print(f"     Common IDs found: {len(common_ids)}")
 
     if len(common_ids) == 0:
+        logger.warning(f"No matching IDs found between D365 and SC for {report_type}")
+        logger.debug(f"Sample D365 IDs: {list(df_d365['clean_id'].dropna()[:3])}")
+        logger.debug(f"Sample SC IDs: {list(df_sc['clean_id'].dropna()[:3])}")
         print(f"     ⚠ WARNING: No matching IDs found between D365 and SC!")
         print(f"     Sample D365 IDs: {list(df_d365['clean_id'].dropna()[:3])}")
         print(f"     Sample SC IDs: {list(df_sc['clean_id'].dropna()[:3])}")
@@ -485,6 +512,7 @@ def create_comparison_excel(report_type, df_d365, df_sc, include_qual_url=False)
         except PermissionError:
             if attempt < MAX_FILE_SAVE_RETRIES - 1:
                 # Try again after a short delay
+                logger.warning(f"File locked (attempt {attempt + 1}/{MAX_FILE_SAVE_RETRIES}): {output_file.name}")
                 print(
                     Messages.warning(
                         Messages.FILE_LOCKED.format(
@@ -497,6 +525,7 @@ def create_comparison_excel(report_type, df_d365, df_sc, include_qual_url=False)
                 time.sleep(FILE_SAVE_RETRY_DELAY_SECONDS)
             else:
                 # Final attempt failed - save with timestamp
+                logger.error(f"File still locked after {MAX_FILE_SAVE_RETRIES} attempts: {output_file.name}")
                 print(
                     Messages.error(
                         Messages.FILE_STILL_LOCKED.format(max_attempts=MAX_FILE_SAVE_RETRIES)
@@ -508,6 +537,7 @@ def create_comparison_excel(report_type, df_d365, df_sc, include_qual_url=False)
 
                 try:
                     wb.save(backup_file)
+                    logger.info(f"Saved with timestamp: {backup_file.name}")
                     print(f"     ✅ Saved with timestamp: {backup_file.name}")
                     print(
                         Messages.suggestion(
@@ -516,6 +546,7 @@ def create_comparison_excel(report_type, df_d365, df_sc, include_qual_url=False)
                     )
                     return backup_file
                 except Exception as e:
+                    logger.critical(f"Critical save error for {output_file.name}: {str(e)}")
                     print(Messages.error(Messages.CRITICAL_SAVE_ERROR))
                     print(f"     Error: {e}")
                     print(
@@ -527,6 +558,7 @@ def create_comparison_excel(report_type, df_d365, df_sc, include_qual_url=False)
 
         except Exception as e:
             error_type = type(e).__name__
+            logger.error(f"Unexpected error saving file: {error_type} - {str(e)}")
             print(
                 Messages.error(
                     Messages.UNEXPECTED_ERROR.format(error_type=error_type)
@@ -543,6 +575,9 @@ def generate_comparisons():
     """
     Step 2: Generate comparison Excel files
     """
+    logger.info("=" * 70)
+    logger.info("STEP 2: GENERATING COMPARISON FILES")
+    logger.info("=" * 70)
     print("\n" + "=" * 70)
     print("STEP 2: GENERATING COMPARISON FILES")
     print("=" * 70)
@@ -550,6 +585,7 @@ def generate_comparisons():
     success_count = 0
 
     for report_type in ["accreditation", "wcb", "client"]:
+        logger.info(f"Processing comparison for {report_type}")
         print(Messages.processing(report_type))
 
         # Check if files exist in subdirectories
@@ -557,10 +593,12 @@ def generate_comparisons():
         sc_file = REDASH_DIR / SC_FILES[report_type]
 
         if not d365_file.exists():
+            logger.warning(f"D365 file not found: {d365_file.name}")
             print(Messages.warning(f"{d365_file.name} not found, skipping..."))
             continue
 
         if not sc_file.exists():
+            logger.warning(f"SC file not found: {sc_file.name}")
             print(Messages.warning(f"{sc_file.name} not found, skipping..."))
             continue
 
@@ -620,18 +658,22 @@ def generate_comparisons():
             output_file = create_comparison_excel(report_type, df_d365, df_sc, include_qual_url)
 
             if output_file:
+                logger.info(f"Successfully created comparison file: {output_file.name}")
                 print(Messages.success(Messages.CREATED_FILE.format(filename=output_file.name)))
                 success_count += 1
             else:
+                logger.error(f"Failed to create comparison for {report_type}")
                 print(Messages.error(Messages.FAILED_COMPARISON))
 
         except Exception as e:
+            logger.exception(f"Error processing {report_type}: {str(e)}")
             print(f"{Messages.ERROR} Error processing {report_type}: {e}")
             import traceback
 
             traceback.print_exc()
             continue
 
+    logger.info(f"Comparison generation completed: {success_count} files created")
     print("\n" + "=" * 70)
     if success_count > 0:
         print(f"SUCCESS! Created {success_count} comparison file(s) in output/")
@@ -644,6 +686,7 @@ def main():
     """
     Main execution flow - Manual workflow (3 steps)
     """
+    logger.info("Starting Status Comparison Tool - Manual Workflow Mode")
     print("\n" + "=" * 70)
     print("DYNAMICS 365 vs SAFECONTRACTOR STATUS COMPARISON")
     print("Manual Workflow Mode")

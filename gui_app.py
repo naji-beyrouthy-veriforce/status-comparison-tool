@@ -10,6 +10,7 @@ from ttkbootstrap.constants import *
 from ttkbootstrap.widgets import ToolTip
 from tkinterdnd2 import DND_FILES, TkinterDnD
 import threading
+import logging
 from pathlib import Path
 import shutil
 import sys
@@ -19,10 +20,13 @@ import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
 
 # Import configuration and utilities
-from config import INPUT_DIR, OUTPUT_DIR, DYNAMICS_DIR, REDASH_DIR, QUERY_IDS_DIR, D365_FILES, SC_FILES, Messages
+from config import INPUT_DIR, OUTPUT_DIR, DYNAMICS_DIR, REDASH_DIR, QUERY_IDS_DIR, D365_FILES, SC_FILES, Messages, setup_logging
 
 # Import main processing functions
 from automate_comparison import extract_and_save_ids, generate_comparisons
+
+# Setup logging for GUI
+logger = setup_logging("comparison_tool_gui", console_output=False, file_output=True)
 
 
 class ComparisonApp:
@@ -31,6 +35,8 @@ class ComparisonApp:
         self.root.title("D365 vs SafeContractor - Status Comparison Tool")
         self.root.geometry("1100x850")
         self.root.resizable(True, True)
+        
+        logger.info("GUI Application started")
         
         # Dark theme colors
         self.colors = {
@@ -667,10 +673,12 @@ class ComparisonApp:
 
             # Validate file exists and type
             if not Path(file_path).exists():
+                logger.warning(f"Dropped file not found: {file_path}")
                 messagebox.showerror("Error", f"Could not find file: {file_path}")
                 return
 
             if not file_path.lower().endswith((".xlsx", ".xls", ".csv")):
+                logger.warning(f"Invalid file type dropped: {file_path}")
                 messagebox.showerror(
                     "Error", "Please drop an Excel file (.xlsx, .xls, or .csv)"
                 )
@@ -679,12 +687,14 @@ class ComparisonApp:
             # Store the file
             self.uploaded_files[file_key] = file_path
             filename = Path(file_path).name
+            logger.info(f"File dropped and stored: {filename} as {file_key}")
 
             # Check if we can enable process buttons
             self.check_upload_status()
             self.status_var.set(f"Dropped: {filename}")
 
         except Exception as e:
+            logger.exception(f"Error processing dropped file: {str(e)}")
             import traceback
 
             traceback.print_exc()
@@ -801,6 +811,7 @@ class ComparisonApp:
 
     def cleanup_files(self):
         """Delete all uploaded files from input directories"""
+        logger.info("Cleanup: Removing uploaded files from input directories")
         try:
             deleted_count = 0
             
@@ -810,7 +821,9 @@ class ComparisonApp:
                     try:
                         file.unlink()
                         deleted_count += 1
+                        logger.debug(f"Deleted: {file.name}")
                     except Exception as e:
+                        logger.warning(f"Error deleting {file.name}: {e}")
                         print(f"Error deleting {file.name}: {e}")
             
             # Delete SC files
@@ -819,24 +832,31 @@ class ComparisonApp:
                     try:
                         file.unlink()
                         deleted_count += 1
+                        logger.debug(f"Deleted: {file.name}")
                     except Exception as e:
+                        logger.warning(f"Error deleting {file.name}: {e}")
                         print(f"Error deleting {file.name}: {e}")
             
             if deleted_count > 0:
+                logger.info(f"Cleaned up {deleted_count} file(s)")
                 print(f"Cleaned up {deleted_count} file(s)")
         except Exception as e:
+            logger.exception(f"Error during cleanup: {str(e)}")
             print(f"Error during cleanup: {e}")
 
     def on_closing(self):
         """Handle window close event"""
+        logger.info("Application closing")
         self.cleanup_files()
         self.root.destroy()
 
     def save_d365_files(self):
         """Copy D365 files to input folder"""
         try:
+            logger.info("Starting D365 file save process")
             DYNAMICS_DIR.mkdir(parents=True, exist_ok=True)
             
+            saved_files = []
             for key in ["accreditation_d365", "wcb_d365", "client_d365"]:
                 if self.uploaded_files[key]:
                     source = Path(self.uploaded_files[key])
@@ -853,7 +873,10 @@ class ComparisonApp:
                     dest = dest.resolve()
 
                     shutil.copy2(str(source), str(dest))
-
+                    saved_files.append(report_type)
+                    logger.info(f"Saved D365 {report_type} file: {source.name} -> {dest.name}")
+            
+            logger.info(f"Successfully saved {len(saved_files)} D365 files: {', '.join(saved_files)}")
             messagebox.showinfo(
                 "Success",
                 f"{Messages.SUCCESS} D365 files saved successfully!\n\nNext step: Go to 'Extract IDs' tab to generate ID lists for Redash.",
@@ -865,14 +888,17 @@ class ComparisonApp:
             self.update_status_indicator("success")
 
         except Exception as e:
+            logger.exception(f"Failed to save D365 files: {str(e)}")
             messagebox.showerror("Error", f"Failed to save files:\n{e}")
             self.update_status_indicator("error")
 
     def save_sc_files(self):
         """Copy SafeContractor files to input folder"""
         try:
+            logger.info("Starting SC file save process")
             REDASH_DIR.mkdir(parents=True, exist_ok=True)
             
+            saved_files = []
             for key in ["accreditation_sc", "wcb_sc", "client_sc"]:
                 if self.uploaded_files[key]:
                     source = Path(self.uploaded_files[key])
@@ -889,7 +915,10 @@ class ComparisonApp:
                     dest = dest.resolve()
 
                     shutil.copy2(str(source), str(dest))
-
+                    saved_files.append(report_type)
+                    logger.info(f"Saved SC {report_type} file: {source.name} -> {dest.name}")
+            
+            logger.info(f"Successfully saved {len(saved_files)} SC files: {', '.join(saved_files)}")
             messagebox.showinfo(
                 "Success",
                 f"{Messages.SUCCESS} SC files saved successfully!\n\nNext step: Go to 'Generate Comparisons' tab to create comparison reports.",
@@ -899,11 +928,13 @@ class ComparisonApp:
             self.update_status_indicator("success")
 
         except Exception as e:
+            logger.exception(f"Failed to save SC files: {str(e)}")
             messagebox.showerror("Error", f"Failed to save files:\n{e}")
             self.update_status_indicator("error")
 
     def extract_ids(self):
         """Run ID extraction in background thread"""
+        logger.info("Starting ID extraction process")
         self.btn_extract.config(state=tk.DISABLED, text="⏳ Extracting...")
         self.extract_console.delete(1.0, tk.END)
         self.status_var.set("Extracting IDs...")
@@ -923,7 +954,9 @@ class ComparisonApp:
                 try:
                     extract_and_save_ids()
                     output = f.getvalue()
+                    logger.info("ID extraction completed successfully")
                 except Exception as e:
+                    logger.exception(f"ID extraction failed: {str(e)}")
                     output = f"Error: {e}\n{f.getvalue()}"
 
             # Update UI in main thread
@@ -967,6 +1000,7 @@ class ComparisonApp:
 
     def generate_comparison(self):
         """Run comparison generation in background thread"""
+        logger.info("Starting comparison generation")
         # Check if SC files exist
         from config import SC_PATTERNS, REPORT_TYPES
         from utils import find_file_by_pattern
@@ -976,6 +1010,7 @@ class ComparisonApp:
         )
 
         if not sc_files_exist:
+            logger.warning("Comparison generation aborted - SC files missing")
             messagebox.showerror(
                 "SC Files Missing",
                 "SafeContractor files are not found!\n\n"
@@ -1027,7 +1062,9 @@ class ComparisonApp:
                 sys.stdout = stream
                 generate_comparisons()
                 output = stream.getvalue()
+                logger.info("Comparison generation completed successfully")
             except Exception as e:
+                logger.exception(f"Comparison generation failed: {str(e)}")
                 output = f"Error: {e}\n{stream.getvalue()}"
             finally:
                 sys.stdout = old_stdout

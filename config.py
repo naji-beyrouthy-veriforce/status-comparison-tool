@@ -5,6 +5,9 @@ Centralizes all constants, patterns, and configuration settings
 
 from pathlib import Path
 import re
+import logging
+from logging.handlers import RotatingFileHandler
+from datetime import datetime
 from openpyxl.styles import Font, PatternFill
 
 # ============================================================================
@@ -16,6 +19,7 @@ OUTPUT_DIR = BASE_DIR / "output"
 DYNAMICS_DIR = INPUT_DIR / "dynamics"
 REDASH_DIR = INPUT_DIR / "redash"
 QUERY_IDS_DIR = OUTPUT_DIR / "query_ids"
+LOG_DIR = BASE_DIR / "logs"
 
 # ============================================================================
 # FILE PATTERNS FOR AUTO-DETECTION
@@ -107,6 +111,71 @@ REPORT_TYPES = ["accreditation", "wcb", "client"]
 # ============================================================================
 
 CLIENT_STATUS_COLUMN = "case"  # The status column name for client reports
+
+# ============================================================================
+# LOGGING CONFIGURATION
+# ============================================================================
+# Log file settings
+LOG_LEVEL = logging.INFO  # Can be changed to DEBUG for more detailed logs
+LOG_MAX_BYTES = 10 * 1024 * 1024  # 10 MB
+LOG_BACKUP_COUNT = 5  # Keep 5 backup files
+
+# Log format
+LOG_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+LOG_DATE_FORMAT = '%Y-%m-%d %H:%M:%S'
+
+def setup_logging(log_name="comparison_tool", console_output=True, file_output=True):
+    """
+    Setup logging configuration for the application.
+    
+    Creates a logger that writes to both file and console with rotating file handler.
+    Log files are stored in logs/ directory with daily rotation.
+    
+    Args:
+        log_name: Name of the logger (used for log filename)
+        console_output: Whether to output logs to console
+        file_output: Whether to output logs to file
+    
+    Returns:
+        logging.Logger: Configured logger instance
+    """
+    # Create logs directory if it doesn't exist
+    LOG_DIR.mkdir(exist_ok=True)
+    
+    # Create logger
+    logger = logging.getLogger(log_name)
+    logger.setLevel(LOG_LEVEL)
+    
+    # Remove existing handlers to avoid duplicates
+    logger.handlers.clear()
+    
+    # Create formatter
+    formatter = logging.Formatter(LOG_FORMAT, datefmt=LOG_DATE_FORMAT)
+    
+    # File handler with rotation
+    if file_output:
+        log_file = LOG_DIR / f"{log_name}_{datetime.now():%Y%m%d}.log"
+        file_handler = RotatingFileHandler(
+            log_file,
+            maxBytes=LOG_MAX_BYTES,
+            backupCount=LOG_BACKUP_COUNT,
+            encoding='utf-8'
+        )
+        file_handler.setLevel(LOG_LEVEL)
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+    
+    # Console handler
+    if console_output:
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(LOG_LEVEL)
+        console_handler.setFormatter(formatter)
+        logger.addHandler(console_handler)
+    
+    # Prevent propagation to root logger
+    logger.propagate = False
+    
+    return logger
 
 # ============================================================================
 # UI MESSAGES & EMOJIS

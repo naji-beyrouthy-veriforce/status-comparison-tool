@@ -473,7 +473,7 @@ class ComparisonApp:
 
         self.compare_console = scrolledtext.ScrolledText(
             self.tab_compare,
-            height=20,
+            height=12,
             bg="#0d1117",
             fg="#58a6ff",
             font=("Consolas", 9),
@@ -483,7 +483,55 @@ class ComparisonApp:
             relief=tk.SOLID,
             bd=1,
         )
-        self.compare_console.pack(fill=tk.BOTH, expand=True, padx=20, pady=(0, 15))
+        self.compare_console.pack(fill=tk.X, padx=20, pady=(0, 15))
+
+        # Email Report Section
+        email_header_frame = ttk.Frame(self.tab_compare)
+        email_header_frame.pack(fill=tk.X, padx=20, pady=(10, 5))
+        
+        email_label = tk.Label(
+            email_header_frame, 
+            text="📧 Email Report:", 
+            font=("Segoe UI", 10, "bold"),
+            bg=self.colors['bg_dark'],
+            fg=self.colors['text_primary']
+        )
+        email_label.pack(side=tk.LEFT)
+        
+        self.btn_copy_email = ttk.Button(
+            email_header_frame,
+            text="📋 Copy to Clipboard",
+            command=self.copy_email_to_clipboard,
+            bootstyle="success",
+            width=20,
+            state="disabled"
+        )
+        self.btn_copy_email.pack(side=tk.RIGHT)
+        
+        ToolTip(self.btn_copy_email, text="Copy email report to clipboard", bootstyle="success")
+
+        self.email_text = scrolledtext.ScrolledText(
+            self.tab_compare,
+            height=12,
+            bg="#f8fafc",
+            fg="#1e293b",
+            font=("Segoe UI", 10),
+            wrap=tk.WORD,
+            insertbackground="#1e293b",
+            selectbackground="#bfdbfe",
+            relief=tk.SOLID,
+            bd=1,
+        )
+        self.email_text.pack(fill=tk.BOTH, expand=True, padx=20, pady=(0, 15))
+        
+        # Add placeholder text
+        placeholder = "Email report will appear here after generating comparisons...\n\n" \
+                     "The report will show:\n" \
+                     "  • SC differences for each comparison type\n" \
+                     "  • D365 records not found in SafeContractor\n" \
+                     "  • Status breakdown by type"
+        self.email_text.insert("1.0", placeholder)
+        self.email_text.config(state="disabled")
 
     def classify_file(self, file_path, file_type_suffix):
         """
@@ -1095,14 +1143,161 @@ class ComparisonApp:
             self.status_var.set("Comparisons generated successfully!")
             self.update_status_indicator("success")
             
+            # Automatically generate email report
+            self.auto_generate_email_report()
+            
             # Automatically open the output folder
             self.open_folder(OUTPUT_DIR)
             
             messagebox.showinfo(
                 "Success",
                 f"{Messages.SUCCESS} Comparison files generated successfully!\n\n"
-                "The Excel files are ready in the output folder (opened automatically).",
+                "The Excel files are ready in the output folder (opened automatically).\n"
+                "Email report generated below - click 'Copy to Clipboard' to use it.",
             )
+
+    def auto_generate_email_report(self):
+        """Automatically generate email report from comparison files after successful comparison"""
+        logger.info("Auto-generating email report after comparison completion")
+        
+        def run_email_generation():
+            try:
+                # Import the email report generator
+                from generate_email_report import (
+                    read_comparison_file,
+                    analyze_sc_sheet,
+                    analyze_d365_sheet,
+                    format_status_name
+                )
+                
+                # Define comparison types and their file paths
+                comparisons = {
+                    "Client": OUTPUT_DIR / "Client_Comparison.xlsx",
+                    "WCB": OUTPUT_DIR / "WCB_Comparison.xlsx",
+                    "Accreditation": OUTPUT_DIR / "Accreditation_Comparison.xlsx"
+                }
+                
+                # Check which files exist
+                available_comparisons = {}
+                
+                for name, path in comparisons.items():
+                    if path.exists():
+                        available_comparisons[name] = path
+                
+                if not available_comparisons:
+                    logger.warning("No comparison files found for email report")
+                    return
+                
+                # Analyze each comparison
+                results = {}
+                for name, file_path in available_comparisons.items():
+                    # Read the file
+                    sc_df, d365_df = read_comparison_file(file_path)
+                    
+                    if sc_df is None or d365_df is None:
+                        continue
+                    
+                    # Analyze both sheets (pass report type for correct column detection)
+                    sc_stats = analyze_sc_sheet(sc_df, d365_df, report_type=name)
+                    d365_stats = analyze_d365_sheet(d365_df, sc_df, report_type=name)
+                    
+                    results[name] = {
+                        "sc": sc_stats,
+                        "d365": d365_stats
+                    }
+                
+                # Generate email text
+                email_lines = []
+                
+                # Process in the order: Client, WCB, Accreditation
+                order = ["Client", "WCB", "Accreditation"]
+                
+                for name in order:
+                    if name not in results:
+                        continue
+                    
+                    data = results[name]
+                    
+                    # Section header
+                    if name == "Client":
+                        email_lines.append("Client specific:\\n")
+                        email_lines.append("SC:")
+                    else:
+                        email_lines.append(f"\\n{name}:\\n")
+                        email_lines.append("SC:")
+                    
+                    # SC statistics
+                    sc_diff = data["sc"]["differences"]
+                    sc_not_found = data["sc"]["not_found"]
+                    
+                    if sc_not_found > 0:
+                        email_lines.append(f"{sc_diff} differences between dynamics and SafeContractor, {sc_not_found} Not found")
+                    else:
+                        email_lines.append(f"{sc_diff} differences between dynamics and SafeContractor")
+                    
+                    # D365 statistics
+                    email_lines.append("\\nD365:")
+                    
+                    total_not_found = data["d365"]["total_not_found"]
+                    email_lines.append(f"{total_not_found} not found in SafeContractor:")
+                    
+                    # Sort status breakdown alphabetically for consistency
+                    status_breakdown = data["d365"]["status_breakdown"]
+                    if status_breakdown:
+                        sorted_statuses = sorted(status_breakdown.items(), key=lambda x: x[0])
+                        for status, count in sorted_statuses:
+                            formatted_status = format_status_name(status)
+                            email_lines.append(f"{count} {formatted_status}")
+                
+                # Join all lines
+                email_text = "\\n".join(email_lines)
+                
+                # Update UI in main thread
+                self.root.after(0, lambda: self.display_email_report(email_text))
+                
+            except Exception as e:
+                logger.exception(f"Email report generation failed: {str(e)}")
+                error_msg = f"\\nNote: Email report generation failed: {str(e)}\\n"
+                self.root.after(0, lambda msg=error_msg: self.compare_console.insert(tk.END, msg))
+        
+        thread = threading.Thread(target=run_email_generation, daemon=True)
+        thread.start()
+    
+    def display_email_report(self, email_text):
+        """Display the generated email report"""
+        # Update email text widget
+        self.email_text.config(state="normal")
+        self.email_text.delete("1.0", tk.END)
+        self.email_text.insert("1.0", email_text)
+        self.email_text.config(state="normal")  # Keep it editable in case user wants to modify
+        
+        # Enable copy button
+        self.btn_copy_email.config(state=tk.NORMAL)
+        
+        logger.info("Email report displayed successfully")
+    
+    def copy_email_to_clipboard(self):
+        """Copy email report text to clipboard"""
+        try:
+            # Get text from email_text widget
+            email_content = self.email_text.get("1.0", tk.END).strip()
+            
+            if not email_content:
+                messagebox.showwarning("Warning", "No email report to copy!")
+                return
+            
+            # Copy to clipboard
+            self.root.clipboard_clear()
+            self.root.clipboard_append(email_content)
+            self.root.update()  # Required to finalize clipboard operation
+            
+            self.status_var.set("Email report copied to clipboard!")
+            messagebox.showinfo("Success", "✓ Email report copied to clipboard!\n\nYou can now paste it into your email.")
+            logger.info("Email report copied to clipboard")
+            
+        except Exception as e:
+            logger.exception(f"Failed to copy to clipboard: {str(e)}")
+            messagebox.showerror("Error", f"Failed to copy to clipboard: {str(e)}")
 
     def open_folder(self, folder_path):
         """Open folder in file explorer"""

@@ -99,6 +99,7 @@ def find_file_by_pattern(directory, patterns, file_suffix=""):
         Path('input/dynamics/accreditation_d365.xlsx')
     """
     directory = Path(directory)
+    
     if not directory.exists():
         return None
 

@@ -38,7 +38,7 @@ python gui_app.py
 
 ## Usage
 
-### 4-Step Manual Workflow
+### 4-Step Streamlined Workflow
 
 #### **Tab 1: Upload D365 Files** 📁
 1. Drag & drop all 3 D365 Excel exports
@@ -62,11 +62,31 @@ python gui_app.py
 3. Files are auto-detected and classified
 4. Click **"Save SafeContractor Files & Proceed"**
 
-#### **Tab 4: Generate Reports** 🚀
+#### **Tab 4: Generate Reports & Email** 🚀 
 1. Click **"Generate Comparisons"**
 2. Wait for processing to complete (~30 seconds)
-3. **Output folder opens automatically**
-4. Find 3 comparison files ready to use!
+3. **Email report is automatically generated** below the console output
+4. **Output folder opens automatically** with Excel files
+5. Click **"Copy to Clipboard"** to copy the email report
+6. Paste into your email - done!
+
+**What the Email Report Includes:**
+```
+Client specific:
+SC:
+1435 differences between dynamics and SafeContractor, 4605 Not found
+
+D365:
+15288 not found in SafeContractor:
+5162 Approved Statuses
+6266 Cancelled Statuses
+...
+
+WCB:
+...
+```
+
+**Time Saved:** No more manual Excel filtering! Email report is generated automatically.
 
 ## Project Structure
 

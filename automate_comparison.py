@@ -275,9 +275,9 @@ def create_comparison_excel(report_type, df_d365, df_sc, include_qual_url=False)
     # Find status column in SC data
     # CRITICAL: For CLIENT reports, the status is in the 'case' column, not a 'status' column
     if report_type.lower() == "client":
-        # For client reports, look for 'case' column which contains the status
+        # For client reports, look for CLIENT_STATUS_COLUMN which contains the status
         status_col_sc = next(
-            (col for col in df_sc.columns if col.lower() == "case"), None
+            (col for col in df_sc.columns if col.lower() == CLIENT_STATUS_COLUMN.lower()), None
         )
     else:
         # For other reports, find any column with 'status' that isn't the ID column
@@ -368,11 +368,11 @@ def create_comparison_excel(report_type, df_d365, df_sc, include_qual_url=False)
     is_client = report_type.lower() == "client"
 
     # COLUMN PLACEMENT STRATEGY:
-    # - Client reports: Insert after 'case' column for better visibility
+    # - Client reports: Insert after CLIENT_STATUS_COLUMN for better visibility
     # - Accreditation/WCB: Append at the end
-    if is_client and "case" in sc_cols_lower:
-        # For client reports, insert after the 'case' column
-        insert_after_idx = sc_cols_lower["case"]
+    if is_client and CLIENT_STATUS_COLUMN.lower() in sc_cols_lower:
+        # For client reports, insert after the CLIENT_STATUS_COLUMN
+        insert_after_idx = sc_cols_lower[CLIENT_STATUS_COLUMN.lower()]
 
         # Insert two columns: "D365 Status" and "Is it the same?"
         ws_sc.insert_cols(insert_after_idx + 1, 2)
@@ -445,7 +445,7 @@ def create_comparison_excel(report_type, df_d365, df_sc, include_qual_url=False)
     comparison_col_letter = sc_status_col_letter
     if report_type.lower() == "client":
         case_col_idx = next(
-            (idx for idx, col in enumerate(sc_cols, 1) if col.lower() == "case"), None
+            (idx for idx, col in enumerate(sc_cols, 1) if col.lower() == CLIENT_STATUS_COLUMN.lower()), None
         )
         if case_col_idx:
             # Adjust if columns were inserted before the case column

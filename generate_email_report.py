@@ -17,7 +17,7 @@ from datetime import datetime
 from collections import defaultdict
 
 # Import configuration
-from config import OUTPUT_DIR, setup_logging
+from config import OUTPUT_DIR, CLIENT_STATUS_COLUMN, setup_logging
 
 # Setup logging
 logger = setup_logging("email_report", console_output=True, file_output=True)
@@ -95,9 +95,9 @@ def analyze_sc_sheet(df_sc, df_d365, report_type="client"):
     # Find status columns
     sc_status_col = None
     if report_type.lower() == "client":
-        # For client, status is in 'case' column
+        # For client, status is in CLIENT_STATUS_COLUMN
         for col in df_sc.columns:
-            if col and col.lower() == "case":
+            if col and col.lower() == CLIENT_STATUS_COLUMN.lower():
                 sc_status_col = col
                 break
     else:

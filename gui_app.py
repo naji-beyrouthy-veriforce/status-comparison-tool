@@ -1153,7 +1153,8 @@ class ComparisonApp:
                 "Success",
                 f"{Messages.SUCCESS} Comparison files generated successfully!\n\n"
                 "The Excel files are ready in the output folder (opened automatically).\n"
-                "Email report generated below - click 'Copy to Clipboard' to use it.",
+                "Email report generated and saved to output/email_report.txt.\n"
+                "Click 'Copy to Clipboard' below to use it in your email.",
             )
 
     def auto_generate_email_report(self):
@@ -1220,10 +1221,10 @@ class ComparisonApp:
                     
                     # Section header
                     if name == "Client":
-                        email_lines.append("Client specific:\\n")
+                        email_lines.append("Client specific:\n")
                         email_lines.append("SC:")
                     else:
-                        email_lines.append(f"\\n{name}:\\n")
+                        email_lines.append(f"\n{name}:\n")
                         email_lines.append("SC:")
                     
                     # SC statistics
@@ -1236,7 +1237,7 @@ class ComparisonApp:
                         email_lines.append(f"{sc_diff} differences between dynamics and SafeContractor")
                     
                     # D365 statistics
-                    email_lines.append("\\nD365:")
+                    email_lines.append("\nD365:")
                     
                     total_not_found = data["d365"]["total_not_found"]
                     email_lines.append(f"{total_not_found} not found in SafeContractor:")
@@ -1250,14 +1251,23 @@ class ComparisonApp:
                             email_lines.append(f"{count} {formatted_status}")
                 
                 # Join all lines
-                email_text = "\\n".join(email_lines)
+                email_text = "\n".join(email_lines)
+                
+                # Save to file
+                output_file = OUTPUT_DIR / "email_report.txt"
+                try:
+                    with open(output_file, "w", encoding="utf-8") as f:
+                        f.write(email_text)
+                    logger.info(f"Email report saved to {output_file}")
+                except Exception as save_error:
+                    logger.error(f"Failed to save email report to file: {save_error}")
                 
                 # Update UI in main thread
                 self.root.after(0, lambda: self.display_email_report(email_text))
                 
             except Exception as e:
                 logger.exception(f"Email report generation failed: {str(e)}")
-                error_msg = f"\\nNote: Email report generation failed: {str(e)}\\n"
+                error_msg = f"\nNote: Email report generation failed: {str(e)}\n"
                 self.root.after(0, lambda msg=error_msg: self.compare_console.insert(tk.END, msg))
         
         thread = threading.Thread(target=run_email_generation, daemon=True)

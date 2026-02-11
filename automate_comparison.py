@@ -272,10 +272,18 @@ def create_comparison_excel(report_type, df_d365, df_sc, include_qual_url=False)
         or df_sc.columns[0]
     )
 
-    # Find status column in SC data (any column with 'status' that isn't the ID column)
-    status_col_sc = next(
-        (col for col in df_sc.columns if "status" in col.lower() and col != id_col_sc), None
-    )
+    # Find status column in SC data
+    # CRITICAL: For CLIENT reports, the status is in the 'case' column, not a 'status' column
+    if report_type.lower() == "client":
+        # For client reports, look for 'case' column which contains the status
+        status_col_sc = next(
+            (col for col in df_sc.columns if col.lower() == "case"), None
+        )
+    else:
+        # For other reports, find any column with 'status' that isn't the ID column
+        status_col_sc = next(
+            (col for col in df_sc.columns if "status" in col.lower() and col != id_col_sc), None
+        )
 
     # If status column not found by name, use the column after the ID column
     if not status_col_sc:
@@ -421,31 +429,8 @@ def create_comparison_excel(report_type, df_d365, df_sc, include_qual_url=False)
     # Enable autofilter on headers
     ws_d365.auto_filter.ref = ws_d365.dimensions
 
-    # Add XLOOKUP formulas for D365 sheet (row 2 onwards)
-    # Cache column letters for better performance
-    d365_status_col_letter = ws_d365.cell(1, d365_status_col_idx).column_letter
-    sc_status_lookup_col_letter = ws_d365.cell(1, sc_status_col_idx).column_letter
-    is_same_col_letter = ws_d365.cell(1, is_same_col_idx).column_letter
-
-    for row_idx in range(2, len(df_d365) + 2):
-        # XLOOKUP with _xlfn prefix and entire column references
-        xlookup_formula = f'=_xlfn.XLOOKUP({d365_id_col_letter}{row_idx},SC!{sc_id_col_letter}:{sc_id_col_letter},SC!{sc_status_col_letter}:{sc_status_col_letter},"Not found",0)'
-        ws_d365.cell(row_idx, sc_status_col_idx, xlookup_formula)
-
-        # Is it the same? formula
-        ws_d365.cell(
-            row_idx,
-            is_same_col_idx,
-            f"={d365_status_col_letter}{row_idx}={sc_status_lookup_col_letter}{row_idx}",
-        )
-
-    # Add XLOOKUP formulas for SC sheet (row 2 onwards)
-    d365_status_col_letter_ref = ws_d365.cell(1, d365_status_col_idx).column_letter
-    d365_lookup_col_letter = ws_sc.cell(1, insert_after_idx + 1).column_letter
-    is_same_col_letter_sc = ws_sc.cell(1, insert_after_idx + 2).column_letter
-
     # ============================================================================
-    # CRITICAL: Determine which column to compare for "Is it the same?" formula
+    # CRITICAL: Determine which column to use for status lookups
     # ============================================================================
     # CLIENT REPORTS: 'case' column IS the status column (business requirement)
     #   - The SafeContractor Redash query for client-specific global IDs
@@ -471,8 +456,32 @@ def create_comparison_excel(report_type, df_d365, df_sc, include_qual_url=False)
     # Log comparison logic for verification
     comparison_col_name = CLIENT_STATUS_COLUMN if report_type.lower() == "client" else status_col_sc
     print(f"     Comparison Logic:")
-    print(f"       - D365 Sheet: Comparing D365 '{status_col_d365}' vs SC Status")
+    print(f"       - D365 Sheet: Comparing D365 '{status_col_d365}' vs SC '{comparison_col_name}'")
     print(f"       - SC Sheet: Comparing SC '{comparison_col_name}' vs D365 Status")
+
+    # Add XLOOKUP formulas for D365 sheet (row 2 onwards)
+    # Cache column letters for better performance
+    d365_status_col_letter = ws_d365.cell(1, d365_status_col_idx).column_letter
+    sc_status_lookup_col_letter = ws_d365.cell(1, sc_status_col_idx).column_letter
+    is_same_col_letter = ws_d365.cell(1, is_same_col_idx).column_letter
+
+    for row_idx in range(2, len(df_d365) + 2):
+        # XLOOKUP with _xlfn prefix and entire column references
+        # FIX: Use comparison_col_letter instead of sc_status_col_letter for correct column
+        xlookup_formula = f'=_xlfn.XLOOKUP({d365_id_col_letter}{row_idx},SC!{sc_id_col_letter}:{sc_id_col_letter},SC!{comparison_col_letter}:{comparison_col_letter},"Not found",0)'
+        ws_d365.cell(row_idx, sc_status_col_idx, xlookup_formula)
+
+        # Is it the same? formula
+        ws_d365.cell(
+            row_idx,
+            is_same_col_idx,
+            f"={d365_status_col_letter}{row_idx}={sc_status_lookup_col_letter}{row_idx}",
+        )
+
+    # Add XLOOKUP formulas for SC sheet (row 2 onwards)
+    d365_status_col_letter_ref = ws_d365.cell(1, d365_status_col_idx).column_letter
+    d365_lookup_col_letter = ws_sc.cell(1, insert_after_idx + 1).column_letter
+    is_same_col_letter_sc = ws_sc.cell(1, insert_after_idx + 2).column_letter
 
     for row_idx in range(2, len(df_sc) + 2):
         # XLOOKUP with _xlfn prefix and entire column references

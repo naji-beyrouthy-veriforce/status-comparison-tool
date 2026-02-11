@@ -1,5 +1,5 @@
 # Project Memory - Status Comparison Tool
-**Last Updated:** February 9, 2026  
+**Last Updated:** February 11, 2026  
 **Status:** ✅ Fully Functional - Manual Workflow  
 **Code Quality:** ✅ Technical Debt Resolved
 
@@ -7,49 +7,87 @@
 
 ## 📝 Recent Updates
 
+### Email Report Logic Fixed & Verified
+**Date:** February 11, 2026
+
+✅ **Critical Fix Applied:**
+- **Problem:** Email report counting 28 WCB differences when Excel showed 25
+- **Root Cause:** D365 data contains duplicate IDs; merge without deduplication picked random matches
+- **Solution:** Added deduplication with `keep='first'` to replicate Excel XLOOKUP behavior
+- **Result:** Email report now matches Excel filtering exactly (WCB: 25, Client: 1413, Accreditation: 16)
+
+**Technical Details:**
+```python
+# Before (incorrect): Merged with all D365 rows including duplicates
+merged = df_sc.merge(df_d365[['clean_id', 'Status Reason']], on='clean_id', how='left')
+
+# After (correct): Deduplicate D365 first, keeping first match (XLOOKUP behavior)
+df_d365_dedup = df_d365.drop_duplicates(subset=['clean_id'], keep='first')
+merged = df_sc.merge(df_d365_dedup[['clean_id', 'Status Reason']], on='clean_id', how='left')
+```
+
+**Why This Matters:**
+- Excel's XLOOKUP returns the **first match** when multiple records have the same ID
+- Python's merge without deduplication creates multiple rows or picks arbitrary matches
+- The `keep='first'` parameter ensures identical behavior to Excel formulas
+- This eliminated 3 false positives in WCB comparison
+
+---
+
 ### Email Report Automation Added
 **Date:** February 9, 2026
 
 ✅ **What Was Added:**
 - **Integrated Email Report:** Email report now automatically generates in Tab 4 after comparison completion
-- **Streamlined Workflow:** Reduced from 5 tabs to 4 tabs - no separate email report tab needed
+- **XLOOKUP Replication Logic:** Replicates Excel formulas using dataframe merges (formulas aren't calculated until Excel opens)
 - **Automated Analysis:** Reads comparison Excel files and generates formatted email reports
 - **Email Generator:** `generate_email_report.py` module with analysis functions
 - **Report Features:**
-  - SC sheet analysis: Counts differences by comparing statuses directly
-  - D365 sheet analysis: Counts "Not found" records via data merging
+  - SC sheet analysis: Merges SC + D365 data, counts where statuses differ
+  - D365 sheet analysis: Finds D365 records not in SC, groups by Status Reason
+  - Deduplication: Ensures first-match behavior matching Excel XLOOKUP
   - Status breakdown: Groups by Status Reason for all "Not found" entries
   - Automatic formatting with proper status names
 
 **How It Works:**
 1. Generate comparison files (Tab 4)
-2. Email report automatically appears below console output
-3. Click "Copy to Clipboard" to paste into email
-4. Report is fully editable before copying
+2. `generate_email_report.py` reads Excel files
+3. Replicates XLOOKUP by merging dataframes on clean IDs
+4. Counts differences and "not found" records
+5. Formats report text automatically
+6. Displays in GUI Tab 4 or saves to `output/email_report.txt`
 
 **Report Format:**
 ```
 Client specific:
+
 SC:
-1435 differences between dynamics and SafeContractor, 4605 Not found
+1413 differences between dynamics and SafeContractor, 4778 Not found
 
 D365:
-15288 not found in SafeContractor:
-5162 Approved Statuses
-6266 Cancelled Statuses
+15369 not found in SafeContractor:
+5168 Approved Statuses
+6268 Cancelled Statuses
 ...
 
 WCB:
+
+SC:
+25 differences between dynamics and SafeContractor
+
+D365:
+63421 not found in SafeContractor:
+5104 Approved Statuses
 ...
 ```
 
 **Impact:**
 - Eliminates manual Excel filtering and counting
-- Automatic generation after comparisons
+- Matches Excel formulas exactly (verified by user)
 - Consistent report formatting
 - Saves 10-15 minutes per report cycle
 - Reduces human error in counting
-- Streamlined from 5 steps to 4 steps
+- Handles duplicate IDs correctly
 
 ---
 
@@ -118,6 +156,230 @@ For **Accreditation/WCB** reports:
 - The SafeContractor Redash query structure for client-specific records returns status data in the `case` field
 - Attempting to "fix" this by using a generic status column will break client comparisons
 - The "Is it the same?" formula correctly compares `case` vs D365 Status for client reports
+
+---
+
+## 🎯 COMPLETE SYSTEM LOGIC & WORKFLOW
+
+### **System Overview**
+
+Compare status records between **Dynamics 365** (D365) and **SafeContractor** (SC) for three report types: **Client**, **WCB**, and **Accreditation**.
+
+**Key Components:**
+1. **automate_comparison.py** - Creates Excel files with XLOOKUP formulas
+2. **generate_email_report.py** - Replicates formulas to generate reports
+
+---
+
+### **WORKFLOW STEP-BY-STEP**
+
+#### **STEP 1: ID Extraction** (`extract_and_save_ids()`)
+
+**When:** SC files don't exist in `input/redash/`
+
+**Process:**
+1. Reads D365 files from `input/dynamics/` for **WCB** and **Accreditation** only
+   - Client doesn't need this step (different query logic)
+2. Finds ID column by keywords: `["global", "alcumus", "id"]`
+3. Extracts unique UUIDs using regex: `[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-...`
+4. Cleans IDs (removes case numbers, trims whitespace, lowercase)
+5. Formats as SQL IN clauses: `('uuid1', 'uuid2', 'uuid3')`
+6. Saves to `output/query_ids/wcb_ids.sql.txt` and `accreditation_ids.sql.txt`
+
+**Output:** SQL files ready to copy into Redash queries
+
+**Manual Step Required:**
+- Copy IDs from `query_ids/*.sql.txt`
+- Paste into Redash `WHERE global_alcumus_id IN (...)` clauses
+- Run Redash queries (IDs: Client=1277, WCB=1281, Accreditation=1266)
+- Download as Excel: `wcb_sc.xlsx`, `accreditation_sc.xlsx`, `client_sc.xlsx`
+- Place in `input/redash/` folder
+- Re-run script
+
+---
+
+#### **STEP 2: Comparison Generation** (`generate_comparisons()`)
+
+**When:** SC files exist in `input/redash/`
+
+**Data Loading:**
+1. Reads D365 file from `input/dynamics/`
+2. Reads SC file from `input/redash/`
+3. Validates file formats and required columns
+4. Creates `clean_id` columns (lowercase, trimmed) for matching
+
+**Excel Creation** (`create_comparison_excel()`):
+
+Creates Excel with **two sheets**:
+
+##### **SC Sheet Structure:**
+```
+Original Columns → [D365 Status] → [Is it the same?] → Remaining Columns
+```
+
+**Columns Added:**
+- **D365 Status:** XLOOKUP formula fetching D365 status for this SC ID
+- **Is it the same?:** Comparison formula (`=sc_status=d365_status`)
+
+**Formula Logic:**
+```excel
+# Cell formula for D365 Status:
+=_xlfn.XLOOKUP(A2, D365!A:A, D365!B:B, "Not found", 0)
+
+# Cell formula for Is it the same?:
+=G2=H2  (where G=SC Status, H=D365 Status)
+```
+
+##### **D365 Sheet Structure:**
+```
+Original Columns → [SC Status] → [Is it the same?]
+```
+
+**Columns Added:**
+- **SC Status:** XLOOKUP formula fetching SC status for this D365 ID
+- **Is it the same?:** Comparison formula (`=d365_status=sc_status`)
+
+**Formula Logic:**
+```excel
+# Cell formula for SC Status:
+=_xlfn.XLOOKUP(A2, SC!A:A, SC!G:G, "Not found", 0)
+
+# Cell formula for Is it the same?:
+=B2=K2  (where B=D365 Status Reason, K=SC Status)
+```
+
+**⚠️ Critical Client Logic:**
+- **Client reports:** Compares `case` column (not `status`) vs D365 Status
+- **Reason:** Redash query for client returns status in `case` column (business requirement)
+- **WCB/Accreditation:** Compares `status` column vs D365 Status
+
+**Output:** Three Excel files in `output/`:
+- `Client_Comparison.xlsx`
+- `WCB_Comparison.xlsx`
+- `Accreditation_Comparison.xlsx`
+
+---
+
+#### **STEP 3: Email Report Generation** (`generate_email_report.py`)
+
+**The Challenge:**
+- Excel formulas created by openpyxl are stored as text strings only
+- Formulas aren't calculated until file is opened in Excel
+- Reading with `data_only=True` returns `NaN` for uncalculated formulas
+- **Solution:** Replicate XLOOKUP logic using Python dataframe merges
+
+**SC Sheet Analysis Process:**
+
+1. **Clean IDs for Matching:**
+```python
+df_sc['clean_id'] = df_sc['global_alcumus_id'].str.strip().str.lower()
+df_d365['clean_id'] = df_d365['Global Alcumus ID'].str.strip().str.lower()
+```
+
+2. **Deduplicate D365 (Critical!):**
+```python
+# Excel XLOOKUP returns FIRST match when duplicates exist
+df_d365_dedup = df_d365.drop_duplicates(subset=['clean_id'], keep='first')
+```
+
+3. **Merge to Replicate XLOOKUP:**
+```python
+# Replicates: =XLOOKUP(sc_id, D365!id, D365!status, "Not found")
+merged = df_sc.merge(
+    df_d365_dedup[['clean_id', 'Status Reason']], 
+    on='clean_id', 
+    how='left'
+)
+```
+
+4. **Count Not Found:**
+```python
+# Where XLOOKUP would return "Not found"
+not_found = merged['Status Reason'].isna().sum()
+```
+
+5. **Count Differences:**
+```python
+# Replicates: =sc_status=d365_status
+valid_rows = merged['Status Reason'].notna()
+sc_statuses = merged.loc[valid_rows, 'status']
+d365_statuses = merged.loc[valid_rows, 'Status Reason']
+differences = (sc_statuses != d365_statuses).sum()
+```
+
+**D365 Sheet Analysis Process:**
+
+1. **Deduplicate SC (Critical!):**
+```python
+df_sc_dedup = df_sc.drop_duplicates(subset=['clean_id'], keep='first')
+```
+
+2. **Find D365 Not in SC:**
+```python
+# Replicates XLOOKUP returning "Not found"
+sc_ids = set(df_sc_dedup['clean_id'])
+not_found_df = df_d365[~df_d365['clean_id'].isin(sc_ids)]
+```
+
+3. **Group by Status Reason:**
+```python
+status_breakdown = not_found_df['Status Reason'].value_counts()
+```
+
+**Why Deduplication is Critical:**
+- **Without deduplication:** Merge creates multiple rows or picks arbitrary D365 record
+- **With `keep='first'`:** Matches Excel XLOOKUP behavior (first match wins)
+- **Real Impact:** Fixed WCB from 28 to 25 differences (eliminated 3 false positives)
+
+**Manual Verification Match:**
+User manually verifies by:
+1. Open Excel comparison file
+2. SC sheet: Filter "Is it the same?" column for FALSE
+3. D365 sheet: Filter "SC Status" column for "Not found"
+4. Count results
+
+**Email report counts now match Excel filtering exactly!**
+
+---
+
+### **Complete Data Flow**
+
+```
+D365 Excel Files (3)
+     ↓
+[automate_comparison.py: extract_and_save_ids()]
+     ├→ Find ID column: ["global", "alcumus", "id"]
+     ├→ Clean UUIDs: regex + lowercase + trim
+     ├→ Deduplicate IDs
+     └→ Format SQL: `('id1', 'id2', ...)`
+     ↓
+output/query_ids/*.sql.txt
+     ↓
+[MANUAL: User copies to Redash, runs queries, downloads SC files]
+     ↓
+SC Excel Files (3) → input/redash/
+     ↓
+[automate_comparison.py: generate_comparisons()]
+     ├→ Read D365 + SC files
+     ├→ Create clean_id columns (lowercase, trim)
+     ├→ Create 2-sheet Excel workbooks:
+     │   ├─ SC Sheet: Original + [D365 Status] + [Is it the same?]
+     │   └─ D365 Sheet: Original + [SC Status] + [Is it the same?]
+     ├→ Add XLOOKUP formulas (text strings, not calculated)
+     └→ Add comparison formulas (=col1=col2)
+     ↓
+output/*_Comparison.xlsx (3 files)
+     ↓
+[generate_email_report.py: generate_email_report()]
+     ├→ Read both sheets from each Excel file
+     ├→ Replicate XLOOKUP via dataframe merge with deduplication
+     ├→ Count differences (SC vs D365 status mismatches)
+     ├→ Count not found (records in one system but not other)
+     ├→ Group D365 "not found" by Status Reason
+     └→ Format email text with counts and breakdown
+     ↓
+output/email_report.txt + Console Display
+```
 
 ---
 
@@ -214,16 +476,60 @@ status_comparaison_tool/
   - Tab 4: Generate comparisons + Automatic email report ⭐ UPDATED
 - **Dependencies:** Uses config paths and calls automate_comparison functions
 
-#### **generate_email_report.py** - Email Report Generator ⭐
+### **generate_email_report.py** - Email Report Generator ⭐
 - **Purpose:** Automated email report generation from comparison files
-- **Functions:**
-  - `read_comparison_file()` - Read Excel sheets
-  - `analyze_sc_sheet()` - Count differences by direct data merging
-  - `analyze_d365_sheet()` - Count not found via data merging and group by status
-  - `format_status_name()` - Format status names consistently
-  - `generate_email_report()` - Main report generation
-- **Output:** Formatted email text ready for copy/paste
-- **Integration:** Automatically called after comparison generation in GUI Tab 4 or can run standalone
+- **Core Challenge:** Excel formulas created by openpyxl aren't calculated until file is opened in Excel
+- **Solution:** Replicate XLOOKUP formula logic using Python dataframe merges
+
+**Functions:**
+  - `read_comparison_file()` - Read both SC and D365 sheets from Excel
+  - `analyze_sc_sheet()` - Replicate SC sheet XLOOKUP and comparison formulas
+  - `analyze_d365_sheet()` - Replicate D365 sheet XLOOKUP and count "not found"
+  - `format_status_name()` - Format status names consistently (adds "Statuses" suffix)
+  - `generate_email_report()` - Main report generation and formatting
+
+**XLOOKUP Replication Logic:**
+
+**SC Sheet Analysis:**
+```python
+# Excel Formula: =XLOOKUP(sc_id, D365!id, D365!status, "Not found")
+# Python Equivalent:
+df_d365_dedup = df_d365.drop_duplicates(subset=['clean_id'], keep='first')
+merged = df_sc.merge(df_d365_dedup[['clean_id', 'Status Reason']], 
+                      on='clean_id', how='left')
+
+# Count "Not found" (NaN in merged status)
+not_found = merged['Status Reason'].isna().sum()
+
+# Count differences (Excel: =sc_status=d365_status)
+differences = (sc_status != d365_status).sum()
+```
+
+**D365 Sheet Analysis:**
+```python
+# Excel Formula: =XLOOKUP(d365_id, SC!id, SC!status, "Not found")
+# Python Equivalent:
+df_sc_dedup = df_sc.drop_duplicates(subset=['clean_id'], keep='first')
+sc_ids = set(df_sc_dedup['clean_id'])
+not_found_df = df_d365[~df_d365['clean_id'].isin(sc_ids)]
+
+# Group by Status Reason
+status_breakdown = not_found_df['Status Reason'].value_counts()
+```
+
+**Critical Deduplication:**
+- `keep='first'` matches Excel XLOOKUP behavior (returns first match for duplicate IDs)
+- Without deduplication: merge creates multiple rows or arbitrary matches
+- With deduplication: exact same results as Excel filtering
+
+**Output:** 
+- Console display with formatted report
+- `output/email_report.txt` file ready for email
+- Matches manual Excel verification exactly
+
+**Integration:** 
+- Automatically called after comparison generation in GUI Tab 4
+- Can run standalone via `Run_Email_Report.bat` or `python generate_email_report.py`
 
 ### **Data Flow:**
 
@@ -325,30 +631,79 @@ automate_comparison.py:generate_comparisons()
 
 | Function | Purpose | Critical Details |
 |----------|---------|------------------|
-| `find_file_by_pattern()` | Finds files by keyword matching | Case-insensitive, flexible patterns |
-| `clean_uuid()` | Extracts UUID from mixed text | Regex: `[0-9a-fA-F]{8}-[0-9a-fA-F]{4}...` |
-| `format_ids_for_sql()` | Formats IDs for SQL IN clause | `'id',\n'id2',\n'id3'` (no trailing comma) |
-| `find_column_by_keywords()` | Finds columns by partial name match | Handles: "global alcumus id", "Global_Alcumus_Id", etc. |
-| `apply_header_formatting()` | Applies red fill to specific headers | Headers: global_alcumus_id, status, status reason |
-| `extract_and_save_ids()` | Main extraction logic | Only processes Accreditation & WCB |
-| `create_comparison_excel()` | Generates comparison files | Creates 2-sheet workbook with formulas |
-| `generate_comparisons()` | Orchestrates all comparisons | Loops through 3 report types |
-| `main()` | Entry point | Checks SC files → runs appropriate step |
+| `extract_and_save_ids()` | Main ID extraction logic | Only processes Accreditation & WCB; Client uses direct comparison |
+| `create_comparison_excel()` | Generates comparison files | Creates 2-sheet workbook with XLOOKUP formulas (text strings) |
+| `generate_comparisons()` | Orchestrates all comparisons | Loops through 3 report types, validates files, calls create_comparison_excel() |
+| `main()` | Entry point | Checks SC files exist → runs appropriate step (extraction or comparison) |
+
+### **utils.py**
+
+| Function | Purpose | Critical Details |
+|----------|---------|------------------|
+| `clean_uuid()` | Extracts UUID from mixed text | Regex: `[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-...` removes case numbers |
+| `format_ids_for_sql()` | Formats IDs for SQL IN clause | `'id1',\n'id2',\n'id3'` (no trailing comma, newline-separated) |
+| `find_column_by_keywords()` | Finds columns by partial name match | Handles: "global alcumus id", "Global_Alcumus_Id", "ID_Alcumus" |
+| `validate_file_format()` | File validation with suggestions | Checks extension, size, accessibility |
+| `validate_dataframe()` | DataFrame structure validation | Verifies required columns exist |
+| `validate_uuid_data()` | UUID quality checking | Counts total, null, invalid UUIDs |
+| `safe_read_excel()` | Robust Excel reading | Handles corrupt files, multiple formats |
+| `check_file_accessibility()` | Proactive lock detection | Tests if file is open in Excel |
+| `apply_header_formatting()` | Excel header styling | Red fill for key columns: ID, status, comparison |
+
+### **generate_email_report.py** ⭐
+
+| Function | Purpose | Critical Details |
+|----------|---------|------------------|
+| `read_comparison_file()` | Read both sheets from Excel | Returns (sc_df, d365_df) or (None, None) on error |
+| `analyze_sc_sheet()` | Replicate SC sheet XLOOKUP & comparison | Merges SC+D365 (deduped), counts differences & not_found |
+| `analyze_d365_sheet()` | Replicate D365 sheet XLOOKUP & grouping | Finds D365 not in SC (using deduped SC), groups by Status Reason |
+| `format_status_name()` | Add "Statuses" suffix to status names | "Approved" → "Approved Statuses", handles edge cases |
+| `generate_email_report()` | Main report generation & formatting | Processes all 3 files, formats email text, saves to file |
+| `main()` | Entry point | Calls generate_email_report() with error handling |
+
+**Key Logic in analyze_sc_sheet():**
+```python
+# 1. Deduplicate D365 (matches Excel XLOOKUP first-match behavior)
+df_d365_dedup = df_d365.drop_duplicates(subset=['clean_id'], keep='first')
+
+# 2. Merge SC with D365 to get D365 status (replicates XLOOKUP)
+merged = df_sc.merge(df_d365_dedup[['clean_id', d365_status_col]], on='clean_id', how='left')
+
+# 3. Count "Not found" (where D365 status is NaN)
+not_found = merged[d365_status_col].isna().sum()
+
+# 4. Count differences (where statuses exist but don't match)
+valid_rows = merged[d365_status_col].notna()
+differences = (sc_statuses != d365_statuses).sum()
+```
+
+**Key Logic in analyze_d365_sheet():**
+```python
+# 1. Deduplicate SC (matches Excel XLOOKUP first-match behavior)
+df_sc_dedup = df_sc.drop_duplicates(subset=['clean_id'], keep='first')
+
+# 2. Find D365 IDs not in SC (replicates XLOOKUP "Not found")
+sc_ids = set(df_sc_dedup['clean_id'])
+not_found_df = df_d365[~df_d365['clean_id'].isin(sc_ids)]
+
+# 3. Group by Status Reason and count
+status_breakdown = not_found_df['Status Reason'].value_counts().to_dict()
+```
 
 ### **gui_app.py**
 
 | Function | Purpose | Critical Details |
 |----------|---------|------------------|
-| `setup_d365_tab()` | Creates Tab 1 UI | Bulk file upload zone |
+| `setup_d365_tab()` | Creates Tab 1 UI | Bulk file upload zone with drag & drop |
 | `setup_extract_tab()` | Creates Tab 2 UI | ID extraction with console output |
-| `setup_sc_tab()` | Creates Tab 3 UI | SC file upload zone |
-| `setup_compare_tab()` | Creates Tab 4 UI | Comparison generation with console |
-| `handle_bulk_drop()` | Processes multi-file drag & drop | Auto-classifies files by name |
+| `setup_sc_tab()` | Creates Tab 3 UI | SC file upload zone with drag & drop |
+| `setup_compare_tab()` | Creates Tab 4 UI | Comparison generation with console + email report |
+| `handle_bulk_drop()` | Processes multi-file drag & drop | Auto-classifies files by name pattern matching |
 | `save_d365_files()` | Saves D365 files to input/dynamics/ | Copies files with validation |
 | `save_sc_files()` | Saves SC files to input/redash/ | Copies files with validation |
-| `extract_ids()` | Runs extraction in background thread | Captures stdout to console |
-| `generate_comparison()` | Runs comparison in background thread | Real-time console updates |
-| `check_upload_status()` | Enables/disables buttons | Checks if all 3 files uploaded |
+| `extract_ids()` | Runs extraction in background thread | Captures stdout to console widget |
+| `generate_comparison()` | Runs comparison in background thread | Real-time console updates + auto email report |
+| `check_upload_status()` | Enables/disables buttons | Checks if all 3 files uploaded per section |
 
 ---
 
@@ -682,7 +1037,135 @@ print(f"Common IDs: {len(common)}")
 
 ---
 
-## 🎓 Learning Resources
+## � KEY DESIGN DECISIONS & PRINCIPLES
+
+### **1. XLOOKUP Replication via DataFrame Merge**
+**Decision:** Replicate Excel XLOOKUP formulas using pandas merge instead of reading calculated values  
+**Reason:** openpyxl creates formulas as text strings; they're not calculated until Excel opens the file  
+**Implementation:** 
+```python
+df_d365_dedup = df_d365.drop_duplicates(subset=['clean_id'], keep='first')
+merged = df_sc.merge(df_d365_dedup[['clean_id', 'Status Reason']], on='clean_id', how='left')
+```
+**Benefit:** Exact match to Excel behavior, no need to open/calculate Excel files
+
+### **2. Deduplication with keep='first'**
+**Decision:** Always deduplicate source data before merge using `keep='first'`  
+**Reason:** Excel's XLOOKUP returns the **first match** when duplicate IDs exist  
+**Without deduplication:** Merge creates multiple rows or picks arbitrary matches  
+**With deduplication:** 
+```python
+df.drop_duplicates(subset=['clean_id'], keep='first')  # Matches XLOOKUP behavior
+```
+**Real Impact:** Fixed WCB false positives (28 → 25 differences)
+
+### **3. Client 'case' Column Status**
+**Decision:** Use `case` column for Client report comparisons (not `status` column)  
+**Reason:** SafeContractor Redash query structure returns client status in `case` field (business requirement)  
+**Implementation:** Conditional logic in `create_comparison_excel()`:
+```python
+if report_type.lower() == "client":
+    comparison_col = "case"  # Client uses 'case' column
+else:
+    comparison_col = "status"  # WCB/Accreditation use 'status' column
+```
+**Critical:** DO NOT "fix" this - it's the correct business logic!
+
+### **4. Two-Sheet Excel Design**
+**Decision:** Each comparison file has 2 sheets (SC sheet + D365 sheet)  
+**Reason:** Allows viewing both perspectives:
+- SC sheet: Which SC records differ from D365 or aren't in D365
+- D365 sheet: Which D365 records aren't in SC (grouped by status)  
+**Benefit:** Complete bidirectional comparison for comprehensive analysis
+
+### **5. Manual Redash Query Execution**
+**Decision:** Require manual copy-paste of IDs into Redash queries  
+**Reason:** 
+- Redash API has URI length limits (414 error) for large ID lists (65K+ records)
+- File upload to Redash not supported by API
+- Security: No hardcoded API keys in code  
+**Alternative Considered:** Redash API automation (removed in v2.0 due to limitations)  
+**Future:** Could implement if Redash adds bulk ID file upload support
+
+### **6. Flexible File/Column Detection**
+**Decision:** Use keyword-based pattern matching for files and columns  
+**Reason:** D365/SC exports have inconsistent naming across different time periods  
+**Implementation:**
+```python
+# File: Must contain "wcb" anywhere in filename
+# Column: Must contain "global" AND "alcumus" AND "id" (case-insensitive)
+```
+**Benefit:** Works with various export formats without code changes
+
+### **7. SQL Output Format**
+**Decision:** Format IDs as multi-line SQL IN clause with quotes  
+**Format:**
+```sql
+'uuid1',
+'uuid2',
+'uuid3'
+```
+**Reason:** 
+- Easy to copy entire file into Redash query
+- No trailing comma (prevents SQL syntax errors)
+- One ID per line (easy to count, verify)
+
+### **8. Centralized Configuration (config.py)**
+**Decision:** All constants, patterns, messages in config.py (not scattered across modules)  
+**Benefit:** 
+- Single source of truth
+- Change patterns without touching business logic
+- Easy to maintain and update
+- Messages class ensures UI consistency
+
+### **9. Modular Architecture**
+**Decision:** Separate modules for config, utils, business logic, UI, reporting  
+**Structure:**
+- `config.py` - Constants, patterns, configuration
+- `utils.py` - Reusable functions (DRY principle)
+- `automate_comparison.py` - Core business logic
+- `gui_app.py` - User interface
+- `generate_email_report.py` - Report generation  
+**Benefit:** 
+- Easy to test individual components
+- Clear separation of concerns
+- Reusable utility functions
+- Independent module updates
+
+### **10. Background Threading in GUI**
+**Decision:** Run long operations in background threads with real-time console output  
+**Implementation:**
+```python
+thread = threading.Thread(target=extract_ids, daemon=True)
+thread.start()
+```
+**Benefit:** 
+- GUI remains responsive
+- User sees progress in real-time
+- Can't start multiple operations simultaneously (prevents conflicts)
+
+### **11. Logging Infrastructure**
+**Decision:** Comprehensive logging to rotating file handlers + console  
+**Format:** `TIMESTAMP - LOGGER - LEVEL - MESSAGE`  
+**Storage:** `logs/` directory (git-ignored, auto-rotate at 10MB)  
+**Benefit:** 
+- Full audit trail for debugging
+- Exception tracking with stack traces
+- Performance overhead <1%
+- No impact on user experience
+
+### **12. Email Report Automation**
+**Decision:** Auto-generate email report after comparison generation  
+**Integration:** Embedded in GUI Tab 4, also available as standalone script  
+**Benefit:** 
+- Eliminates 10-15 minutes of manual filtering/counting
+- Consistent formatting
+- Matches Excel verification exactly
+- Reduces human error
+
+---
+
+## �🎓 Learning Resources
 
 ### **Key Libraries Used:**
 
@@ -810,4 +1293,32 @@ output/              # Comparison Excel files
 
 **END OF PROJECT MEMORY**
 
-*This document should be updated whenever significant changes are made to the codebase.*
+*This document must be read in full before implementing any solution, feature, debugging, or fix.*
+
+---
+
+## ⚠️ IMPORTANT FOR AI ASSISTANT
+
+**BEFORE implementing any change:**
+1. ✅ Read the COMPLETE SYSTEM LOGIC & WORKFLOW section
+2. ✅ Read the KEY DESIGN DECISIONS & PRINCIPLES section
+3. ✅ Review the CRITICAL BUSINESS LOGIC section
+4. ✅ Check Recent Updates for latest changes
+5. ✅ Verify your understanding matches the documented logic
+
+**The system logic is precisely documented and must be followed exactly.**
+
+**Critical reminders:**
+- Email report replicates XLOOKUP via merge with `keep='first'` deduplication
+- Client uses 'case' column (not 'status') - this is CORRECT per business requirements
+- Always deduplicate before merging to match Excel XLOOKUP first-match behavior
+- Manual Redash step is required (API limitations)
+- Two-sheet Excel design is intentional (bidirectional comparison)
+
+**When debugging:**
+- Compare behavior to documented workflow
+- Check if deduplication is applied correctly
+- Verify column detection matches expected keywords
+- Ensure Client/WCB/Accreditation logic differences are preserved
+
+**This document should be updated whenever significant changes are made to the codebase.**

@@ -6,7 +6,7 @@ title D365 Status Comparison Tool
 
 echo.
 echo ============================================================
-echo  D365 vs Service Cloud Status Comparison Tool
+echo  D365 vs SafeContractor Status Comparison Tool
 echo ============================================================
 echo.
 

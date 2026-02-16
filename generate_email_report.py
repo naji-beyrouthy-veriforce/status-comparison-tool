@@ -17,7 +17,7 @@ from datetime import datetime
 from collections import defaultdict
 
 # Import configuration
-from config import OUTPUT_DIR, CLIENT_STATUS_COLUMN, setup_logging
+from config import OUTPUT_DIR, REPORT_OUTPUT_DIRS, CLIENT_STATUS_COLUMN, setup_logging
 
 # Setup logging
 logger = setup_logging("email_report", console_output=True, file_output=True)
@@ -93,25 +93,41 @@ def analyze_sc_sheet(df_sc, df_d365, report_type="client"):
     logger.debug(f"Found ID columns for {report_type} - SC: {sc_id_col}, D365: {d365_id_col}")
     
     # Find status columns
-    sc_status_col = None
-    if report_type.lower() == "client":
-        # For client, status is in CLIENT_STATUS_COLUMN
-        for col in df_sc.columns:
-            if col and col.lower() == CLIENT_STATUS_COLUMN.lower():
-                sc_status_col = col
-                break
-    else:
-        # For WCB/Accreditation, status is in 'status' column
-        for col in df_sc.columns:
-            if col and col.lower() == "status":
-                sc_status_col = col
-                break
-    
+    # D365 always has "Status Reason" column
     d365_status_col = None
     for col in df_d365.columns:
         if col and "status" in str(col).lower() and "reason" in str(col).lower():
             d365_status_col = col
             break
+    
+    # SC status column varies by report type
+    # CRITICAL: For CLIENT reports, the status is in the 'case' column, not a 'status' column
+    sc_status_col = None
+    if report_type.lower() == "client":
+        # For client reports, look for CLIENT_STATUS_COLUMN which contains the status
+        sc_status_col = next(
+            (col for col in df_sc.columns if col.lower() == CLIENT_STATUS_COLUMN.lower()), None
+        )
+    else:
+        # For other reports (WCB/Accreditation), find any column with 'status' that isn't the ID column
+        sc_status_col = next(
+            (col for col in df_sc.columns if "status" in col.lower() and col != sc_id_col), None
+        )
+    
+    # If status column not found by name, use the column after the ID column as fallback
+    if not sc_status_col:
+        try:
+            id_col_index = list(df_sc.columns).index(sc_id_col)
+            if id_col_index + 1 < len(df_sc.columns):
+                sc_status_col = df_sc.columns[id_col_index + 1]
+            else:
+                # Fallback: look for a column with string data that might be status
+                for col in df_sc.columns:
+                    if col != sc_id_col and df_sc[col].dtype == "object":
+                        sc_status_col = col
+                        break
+        except (ValueError, IndexError):
+            pass
     
     if sc_status_col is None or d365_status_col is None:
         logger.warning(f"Could not find status columns for {report_type}: SC={sc_status_col}, D365={d365_status_col}")
@@ -131,20 +147,26 @@ def analyze_sc_sheet(df_sc, df_d365, report_type="client"):
     df_d365_dedup = df_d365_copy.drop_duplicates(subset=['clean_id'], keep='first')
     
     # Merge to get D365 status (this replicates the XLOOKUP formula)
+    # Use suffixes to avoid column name conflicts when both dataframes have same column names
     merged = df_sc_copy.merge(
         df_d365_dedup[['clean_id', d365_status_col]],
         on='clean_id',
-        how='left'
+        how='left',
+        suffixes=('_sc', '_d365')
     )
     
+    # Determine the correct column name after merge (may have suffix if column existed in both)
+    d365_status_col_merged = f"{d365_status_col}_d365" if f"{d365_status_col}_d365" in merged.columns else d365_status_col
+    sc_status_col_merged = f"{sc_status_col}_sc" if f"{sc_status_col}_sc" in merged.columns else sc_status_col
+    
     # Count "Not found" (SC records with no matching D365 record)
-    not_found = merged[d365_status_col].isna().sum()
+    not_found = merged[d365_status_col_merged].isna().sum()
     
     # Count differences (replicate "Is it the same?" formula: =sc_status=d365_status)
-    valid_rows = merged[d365_status_col].notna()
+    valid_rows = merged[d365_status_col_merged].notna()
     if valid_rows.any():
-        sc_statuses = merged.loc[valid_rows, sc_status_col].fillna("").astype(str)
-        d365_statuses = merged.loc[valid_rows, d365_status_col].fillna("").astype(str)
+        sc_statuses = merged.loc[valid_rows, sc_status_col_merged].fillna("").astype(str)
+        d365_statuses = merged.loc[valid_rows, d365_status_col_merged].fillna("").astype(str)
         differences = (sc_statuses != d365_statuses).sum()
     else:
         differences = 0
@@ -282,11 +304,11 @@ def generate_email_report():
     print("EMAIL REPORT GENERATOR")
     print("=" * 70)
     
-    # Define comparison types and their file paths
+    # Define comparison types and their file paths (using new subfolder structure)
     comparisons = {
-        "Client": OUTPUT_DIR / "Client_Comparison.xlsx",
-        "WCB": OUTPUT_DIR / "WCB_Comparison.xlsx",
-        "Accreditation": OUTPUT_DIR / "Accreditation_Comparison.xlsx"
+        "Client": REPORT_OUTPUT_DIRS["client"] / "Client_Comparison.xlsx",
+        "WCB": REPORT_OUTPUT_DIRS["wcb"] / "WCB_Comparison.xlsx",
+        "Accreditation": REPORT_OUTPUT_DIRS["accreditation"] / "Accreditation_Comparison.xlsx"
     }
     
     # Check which files exist

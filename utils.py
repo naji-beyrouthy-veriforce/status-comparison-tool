@@ -5,6 +5,7 @@ Reusable helper functions for file handling, data cleaning, and validation
 
 import pandas as pd
 from pathlib import Path
+import zipfile
 from config import (
     UUID_PATTERN,
     ALLOWED_FILE_EXTENSIONS,
@@ -446,3 +447,50 @@ def check_file_accessibility(file_path, mode="read"):
         return False, f"File not found: {file_path.name}", "Verify the file path is correct"
     except Exception as e:
         return False, f"Access error: {str(e)}", "Check file permissions and try again"
+
+
+def create_comparison_zip(folders_to_zip, output_zip_path):
+    """
+    Create a zip file containing the specified folders.
+    
+    Args:
+        folders_to_zip: List of Path objects representing directories to zip
+        output_zip_path: Path object for the output zip file
+        
+    Returns:
+        tuple: (success: bool, message: str, zip_path: Path or None)
+        
+    Example:
+        >>> folders = [Path("output/accreditation"), Path("output/wcb"), Path("output/client")]
+        >>> success, msg, path = create_comparison_zip(folders, Path("output/comparison.zip"))
+    """
+    try:
+        # Remove existing zip file if it exists
+        if output_zip_path.exists():
+            output_zip_path.unlink()
+        
+        # Create the zip file
+        with zipfile.ZipFile(output_zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            for folder in folders_to_zip:
+                if not folder.exists():
+                    continue
+                    
+                # Add all files in the folder to the zip
+                for file_path in folder.rglob('*'):
+                    if file_path.is_file():
+                        # Calculate the archive name (relative path from parent of folder)
+                        arcname = file_path.relative_to(folder.parent)
+                        zipf.write(file_path, arcname)
+        
+        # Verify the zip was created
+        if output_zip_path.exists() and output_zip_path.stat().st_size > 0:
+            file_size = output_zip_path.stat().st_size
+            size_kb = file_size / 1024
+            return (True, f"Successfully created comparison.zip ({size_kb:.1f} KB)", output_zip_path)
+        else:
+            return (False, "Zip file was created but is empty or invalid", None)
+            
+    except PermissionError:
+        return (False, f"Cannot create zip file: Permission denied", None)
+    except Exception as e:
+        return (False, f"Error creating zip file: {str(e)}", None)

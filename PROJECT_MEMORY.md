@@ -1,11 +1,146 @@
 # Project Memory - Status Comparison Tool
-**Last Updated:** February 11, 2026  
+**Last Updated:** February 16, 2026  
 **Status:** ✅ Fully Functional - Manual Workflow  
 **Code Quality:** ✅ Technical Debt Resolved
+
+**Latest Fixes (Feb 16, 2026):**
+- ✅ Fixed SC column detection bug (email report now shows correct difference counts)
+- ✅ Unified Tab 4 output (single display for generation logs + email report)
+- ✅ Smart clipboard copy (extracts only email portion)
 
 ---
 
 ## 📝 Recent Updates
+
+### GUI Tab 4 Unified Output & SC Column Detection Fix
+**Date:** February 16, 2026
+
+✅ **Critical Bug Fixed:**
+- **Problem:** SC sheet values in email report all reading as 0/false (no differences detected)
+- **Root Cause:** `analyze_sc_sheet()` looking for "Status Reason" column in SC sheet, which doesn't exist
+- **Impact:** Email report showed 0 differences for all report types instead of actual counts
+
+**Technical Fix (generate_email_report.py):**
+```python
+# Before (incorrect): Looking for "Status Reason" in SC sheet
+sc_status_col = None
+for col in df_sc.columns:
+    if col and "status" in col.lower() and "reason" in col.lower():
+        sc_status_col = col
+        break
+
+# After (correct): Different column logic based on report type
+if report_type.lower() == "client":
+    # Client uses 'case' column for status
+    sc_status_col = next(
+        (col for col in df_sc.columns if col.lower() == CLIENT_STATUS_COLUMN.lower()), None
+    )
+else:
+    # WCB/Accreditation use 'status' column (not "Status Reason")
+    sc_status_col = next(
+        (col for col in df_sc.columns if "status" in col.lower() and col != sc_id_col), None
+    )
+```
+
+**Column Structure Clarification:**
+- **SC Sheets:**
+  - Client: Uses `case` column for status
+  - WCB: Uses `status` column
+  - Accreditation: Uses `status` column
+- **D365 Sheets:**
+  - All types: Use `Status Reason` column
+
+**Result:**
+- Email report now correctly shows differences: Client: 1408, WCB: 31, Accreditation: 13
+- Matches Excel manual verification exactly
+
+---
+
+✅ **GUI Tab 4 - Unified Output Interface:**
+- **Removed:** Separate "Console Output" and "Email Report" sections (2 scrollable areas)
+- **Added:** Single unified output area displaying everything in one place
+- **Height:** Increased to 28 lines to accommodate both generation logs and email report
+- **Visual Features:**
+  - Real-time comparison generation progress
+  - Clear visual separator (`======`) between sections
+  - "📧 EMAIL REPORT" header for easy identification
+  - Color-coded content: Green headers, blue separators, white email text, red errors
+  - Dark theme consistency maintained
+
+**Smart Clipboard Copying:**
+- Button renamed to "📋 Copy Email Report" for clarity
+- Intelligently extracts **only** the email report portion (not generation logs)
+- Stores `email_report_start` position for precise extraction
+- Fallback to reading from `email_report.txt` if position tracking fails
+
+**UI Flow:**
+1. User clicks "Generate Comparisons"
+2. Real-time progress displays in unified output
+3. Visual separator appears
+4. Email report displays with formatted header
+5. "Copy Email Report" button enabled
+6. User clicks to copy only the email portion to clipboard
+
+**Benefits:**
+- Cleaner, less cluttered interface
+- Everything visible in one scroll area
+- No need to switch between sections
+- Clear visual separation of content types
+- Improved user experience and workflow efficiency
+
+**Files Modified:**
+- `gui_app.py`: Updated `setup_compare_tab()`, `generate_comparison()`, `comparison_complete()`, `display_email_report()`, `copy_email_to_clipboard()`
+- `generate_email_report.py`: Fixed `analyze_sc_sheet()` column detection logic
+
+---
+
+### Comparison Folders Organization & Zip Archive
+**Date:** February 16, 2026
+
+✅ **What Was Added:**
+- **Organized Output Structure:** Comparison files now saved in dedicated subdirectories
+- **Automatic Zip Archive:** All comparison folders automatically zipped into `comparison.zip`
+- **Folder Structure:** Three subdirectories in output: `accreditation/`, `wcb/`, `client/`
+- **Single Archive File:** `comparison.zip` contains all three folders for easy sharing
+
+**Technical Implementation:**
+```python
+# New directory structure
+output/
+├── accreditation/
+│   └── Accreditation_Comparison.xlsx
+├── wcb/
+│   └── WCB_Comparison.xlsx
+├── client/
+│   └── Client_Comparison.xlsx
+└── comparison.zip  # Contains all three folders
+```
+
+**Configuration Updates (config.py):**
+- Added `ACCREDITATION_OUTPUT_DIR`, `WCB_OUTPUT_DIR`, `CLIENT_OUTPUT_DIR`
+- Added `REPORT_OUTPUT_DIRS` mapping dictionary
+- Added `COMPARISON_ZIP_PATH` constant
+
+**Utility Function (utils.py):**
+- Added `create_comparison_zip()` function
+- Automatically creates zip archive with all comparison folders
+- Handles existing file cleanup and error scenarios
+
+**Workflow Integration:**
+- Subdirectories created automatically if they don't exist
+- Comparison files saved to their respective subdirectories
+- Zip file created automatically after successful comparison generation
+- **Email report generated automatically after zip creation** ⭐
+- Old zip file replaced with new one each run
+
+**Benefits:**
+- Better organization of output files
+- Easy to share all comparisons in one archive
+- Maintains folder structure for clarity
+- Automatic cleanup of previous zip file
+- **Fully automated workflow - no manual email report generation needed** ⭐
+
+---
 
 ### Email Report Logic Fixed & Verified
 **Date:** February 11, 2026
@@ -53,9 +188,11 @@ merged = df_sc.merge(df_d365_dedup[['clean_id', 'Status Reason']], on='clean_id'
 1. Generate comparison files (Tab 4)
 2. `generate_email_report.py` reads Excel files
 3. Replicates XLOOKUP by merging dataframes on clean IDs
-4. Counts differences and "not found" records
-5. Formats report text automatically
-6. Displays in GUI Tab 4 or saves to `output/email_report.txt`
+4. **Uses correct status columns:** `case` for Client, `status` for WCB/Accreditation ⭐ FIXED
+5. Counts differences and "not found" records
+6. Formats report text automatically
+7. Displays in unified output area in GUI Tab 4 ⭐ UPDATED
+8. Saves to `output/email_report.txt` for reference
 
 **Report Format:**
 ```
@@ -253,10 +390,11 @@ Original Columns → [SC Status] → [Is it the same?]
 - **Reason:** Redash query for client returns status in `case` column (business requirement)
 - **WCB/Accreditation:** Compares `status` column vs D365 Status
 
-**Output:** Three Excel files in `output/`:
-- `Client_Comparison.xlsx`
-- `WCB_Comparison.xlsx`
-- `Accreditation_Comparison.xlsx`
+**Output:** Three Excel files in organized subdirectories:
+- `output/accreditation/Accreditation_Comparison.xlsx`
+- `output/wcb/WCB_Comparison.xlsx`
+- `output/client/Client_Comparison.xlsx`
+- `output/comparison.zip` (zip archive containing all three folders)
 
 ---
 
@@ -270,40 +408,57 @@ Original Columns → [SC Status] → [Is it the same?]
 
 **SC Sheet Analysis Process:**
 
-1. **Clean IDs for Matching:**
+1. **Find Correct Status Column (Critical!):**
+```python
+# CLIENT: Uses 'case' column for status
+if report_type.lower() == "client":
+    sc_status_col = next(
+        (col for col in df_sc.columns if col.lower() == CLIENT_STATUS_COLUMN.lower()), None
+    )
+# WCB/ACCREDITATION: Use 'status' column (NOT "Status Reason")
+else:
+    sc_status_col = next(
+        (col for col in df_sc.columns if "status" in col.lower() and col != sc_id_col), None
+    )
+
+# D365 always uses 'Status Reason' column
+d365_status_col = find_column_with_text('Status Reason')
+```
+
+2. **Clean IDs for Matching:**
 ```python
 df_sc['clean_id'] = df_sc['global_alcumus_id'].str.strip().str.lower()
 df_d365['clean_id'] = df_d365['Global Alcumus ID'].str.strip().str.lower()
 ```
 
-2. **Deduplicate D365 (Critical!):**
+3. **Deduplicate D365 (Critical!):**
 ```python
 # Excel XLOOKUP returns FIRST match when duplicates exist
 df_d365_dedup = df_d365.drop_duplicates(subset=['clean_id'], keep='first')
 ```
 
-3. **Merge to Replicate XLOOKUP:**
+4. **Merge to Replicate XLOOKUP:**
 ```python
 # Replicates: =XLOOKUP(sc_id, D365!id, D365!status, "Not found")
 merged = df_sc.merge(
-    df_d365_dedup[['clean_id', 'Status Reason']], 
+    df_d365_dedup[['clean_id', d365_status_col]], 
     on='clean_id', 
     how='left'
 )
 ```
 
-4. **Count Not Found:**
+5. **Count Not Found:**
 ```python
 # Where XLOOKUP would return "Not found"
-not_found = merged['Status Reason'].isna().sum()
+not_found = merged[d365_status_col].isna().sum()
 ```
 
-5. **Count Differences:**
+6. **Count Differences:**
 ```python
 # Replicates: =sc_status=d365_status
-valid_rows = merged['Status Reason'].notna()
-sc_statuses = merged.loc[valid_rows, 'status']
-d365_statuses = merged.loc[valid_rows, 'Status Reason']
+valid_rows = merged[d365_status_col].notna()
+sc_statuses = merged.loc[valid_rows, sc_status_col]  # Uses correct SC column
+d365_statuses = merged.loc[valid_rows, d365_status_col]
 differences = (sc_statuses != d365_statuses).sum()
 ```
 
@@ -362,23 +517,32 @@ SC Excel Files (3) → input/redash/
 [automate_comparison.py: generate_comparisons()]
      ├→ Read D365 + SC files
      ├→ Create clean_id columns (lowercase, trim)
+     ├→ Create report subdirectories (accreditation/, wcb/, client/)
      ├→ Create 2-sheet Excel workbooks:
      │   ├─ SC Sheet: Original + [D365 Status] + [Is it the same?]
      │   └─ D365 Sheet: Original + [SC Status] + [Is it the same?]
      ├→ Add XLOOKUP formulas (text strings, not calculated)
-     └→ Add comparison formulas (=col1=col2)
+     ├→ Add comparison formulas (=col1=col2)
+     └→ Save to respective subdirectories
      ↓
-output/*_Comparison.xlsx (3 files)
+output/{accreditation,wcb,client}/*_Comparison.xlsx (3 files)
+     ↓
+[utils.py: create_comparison_zip()]
+     ├→ Create comparison.zip archive
+     └→ Add all three subdirectories to zip
+     ↓
+output/comparison.zip
      ↓
 [generate_email_report.py: generate_email_report()]
      ├→ Read both sheets from each Excel file
+     ├→ Detect correct SC status columns (case for Client, status for others) ⭐ FIXED
      ├→ Replicate XLOOKUP via dataframe merge with deduplication
      ├→ Count differences (SC vs D365 status mismatches)
      ├→ Count not found (records in one system but not other)
      ├→ Group D365 "not found" by Status Reason
      └→ Format email text with counts and breakdown
      ↓
-output/email_report.txt + Console Display
+output/email_report.txt + Unified GUI Output Display ⭐ UPDATED
 ```
 
 ---
@@ -402,7 +566,7 @@ status_comparaison_tool/
 ├── automate_comparison.py    # Core logic: ID extraction & comparison generation
 ├── generate_email_report.py  # ⭐ Email report generator with analysis functions
 ├── config.py                 # ⭐ Configuration hub: constants, patterns, Messages class
-├── utils.py                  # ⭐ Reusable utilities: validation, formatting, file ops
+├── utils.py                  # ⭐ Reusable utilities: validation, formatting, file ops, zip creation
 ├── gui_app.py                # GUI interface: 5-tab manual workflow
 ├── requirements.txt          # Python dependencies
 ├── Run_CLI.bat              # Run command-line version
@@ -420,8 +584,14 @@ status_comparaison_tool/
     ├── query_ids/           # Extracted ID lists for Redash queries
     │   ├── accreditation_ids.sql.txt
     │   └── wcb_ids.sql.txt
-    ├── email_report.txt     # ⭐ Generated email report (text format)
-    └── *.xlsx               # Final comparison files (3 reports)
+    ├── accreditation/       # ⭐ Accreditation comparison files
+    │   └── Accreditation_Comparison.xlsx
+    ├── wcb/                 # ⭐ WCB comparison files
+    │   └── WCB_Comparison.xlsx
+    ├── client/              # ⭐ Client comparison files
+    │   └── Client_Comparison.xlsx
+    ├── comparison.zip       # ⭐ Zip archive containing all comparison folders
+    └── email_report.txt     # ⭐ Generated email report (text format)
 ```
 
 **⭐ = Recently enhanced/created files**
@@ -435,7 +605,7 @@ status_comparaison_tool/
 #### **config.py** - Configuration Hub
 - **Purpose:** Single source of truth for all constants
 - **Contents:**
-  - Directory paths (INPUT_DIR, OUTPUT_DIR, etc.)
+  - Directory paths (INPUT_DIR, OUTPUT_DIR, REPORT_OUTPUT_DIRS, COMPARISON_ZIP_PATH, etc.)
   - File patterns (D365_PATTERNS, SC_PATTERNS)
   - Validation settings (MIN_FILE_SIZE_BYTES, ALLOWED_FILE_EXTENSIONS)
   - Retry logic constants (MAX_FILE_SAVE_RETRIES, FILE_SAVE_RETRY_DELAY_SECONDS)
@@ -455,6 +625,7 @@ status_comparaison_tool/
   - `safe_read_excel()` - Robust Excel reading
   - `check_file_accessibility()` - Proactive lock detection
   - `apply_header_formatting()` - Excel header styling
+  - `create_comparison_zip()` - ⭐ Create zip archive of comparison folders
 - **Benefits:** DRY principle, easy testing, reusability
 
 #### **automate_comparison.py** - Business Logic
@@ -468,22 +639,23 @@ status_comparaison_tool/
 - **Benefits:** Clean separation, focused functionality
 
 #### **gui_app.py** - User Interface
-- **Purpose:** 4-tab drag-and-drop interface
+- **Purpose:** 4-tab drag-and-drop interface with unified output ⭐ UPDATED
 - **Features:**
   - Tab 1: Upload D365 files
   - Tab 2: Extract IDs
   - Tab 3: Upload SC files
-  - Tab 4: Generate comparisons + Automatic email report ⭐ UPDATED
+  - Tab 4: Generate comparisons with unified output (generation logs + email report in one area) ⭐ UPDATED
 - **Dependencies:** Uses config paths and calls automate_comparison functions
 
 ### **generate_email_report.py** - Email Report Generator ⭐
 - **Purpose:** Automated email report generation from comparison files
 - **Core Challenge:** Excel formulas created by openpyxl aren't calculated until file is opened in Excel
 - **Solution:** Replicate XLOOKUP formula logic using Python dataframe merges
+- **Critical Fix:** Correct SC status column detection (case for Client, status for WCB/Accreditation) ⭐ FIXED
 
 **Functions:**
   - `read_comparison_file()` - Read both SC and D365 sheets from Excel
-  - `analyze_sc_sheet()` - Replicate SC sheet XLOOKUP and comparison formulas
+  - `analyze_sc_sheet()` - Replicate SC sheet XLOOKUP and comparison formulas ⭐ FIXED
   - `analyze_d365_sheet()` - Replicate D365 sheet XLOOKUP and count "not found"
   - `format_status_name()` - Format status names consistently (adds "Statuses" suffix)
   - `generate_email_report()` - Main report generation and formatting
@@ -492,17 +664,24 @@ status_comparaison_tool/
 
 **SC Sheet Analysis:**
 ```python
+# STEP 1: Detect correct SC status column based on report type (CRITICAL FIX)
+if report_type.lower() == "client":
+    sc_status_col = find_column('case')  # Client uses 'case' column
+else:
+    sc_status_col = find_column('status')  # WCB/Accreditation use 'status'
+
+# STEP 2: Replicate Excel XLOOKUP formula
 # Excel Formula: =XLOOKUP(sc_id, D365!id, D365!status, "Not found")
 # Python Equivalent:
 df_d365_dedup = df_d365.drop_duplicates(subset=['clean_id'], keep='first')
-merged = df_sc.merge(df_d365_dedup[['clean_id', 'Status Reason']], 
+merged = df_sc.merge(df_d365_dedup[['clean_id', d365_status_col]], 
                       on='clean_id', how='left')
 
 # Count "Not found" (NaN in merged status)
-not_found = merged['Status Reason'].isna().sum()
+not_found = merged[d365_status_col].isna().sum()
 
 # Count differences (Excel: =sc_status=d365_status)
-differences = (sc_status != d365_status).sum()
+differences = (sc_statuses != d365_statuses).sum()  # Uses correct columns
 ```
 
 **D365 Sheet Analysis:**
@@ -605,23 +784,33 @@ automate_comparison.py:generate_comparisons()
   1. Validates SC files exist
   2. Reads D365 + SC files
   3. Cleans IDs in both datasets
-  4. Merges on `Global Alcumus Id`
-  5. Creates comparison Excel with 2 sheets:
+  4. Creates report subdirectories (accreditation/, wcb/, client/) if they don't exist
+  5. Merges on `Global Alcumus Id`
+  6. Creates comparison Excel with 2 sheets:
      - **SC Sheet:** SafeContractor data + D365 status columns
      - **D365 Sheet:** Dynamics data + SC status columns
-  6. Adds calculated columns: "Is it the same?"
-  7. Applies red header formatting
-  8. **Automatically generates email report** ⭐
-  9. Displays email report in Tab 4 below console
-  10. Enables "Copy to Clipboard" button
-- **Output:** 3 Excel files in `output/`
-  - `accreditation_comparison.xlsx`
-  - `wcb_comparison.xlsx`
-  - `client_comparison.xlsx`
+  7. Adds calculated columns: "Is it the same?"
+  8. Applies red header formatting
+  9. Saves files to respective subdirectories
+  10. **Creates comparison.zip archive** ⭐ containing all three folders
+  11. **Automatically generates email report** ⭐
+  12. Displays email report in unified output area in Tab 4 ⭐ UPDATED
+  13. Enables "Copy Email Report" button
+- **Output:** Organized folder structure in `output/`
+  - `output/accreditation/Accreditation_Comparison.xlsx`
+  - `output/wcb/WCB_Comparison.xlsx`
+  - `output/client/Client_Comparison.xlsx`
+  - `output/comparison.zip` ⭐ (all comparison folders in one archive)
+  - `output/email_report.txt` (saved for reference)
 - **Email Report:** Ready-to-copy formatted text with:
-  - SC differences for each comparison type
+  - SC differences for each comparison type (using correct status columns) ⭐ FIXED
   - D365 records not found in SafeContractor
   - Status breakdown by type
+- **GUI Display:** Single unified output showing:
+  - Real-time comparison generation progress
+  - Visual separator (======)
+  - Email report with formatted header
+  - Smart clipboard copy (email portion only)
 
 ---
 
@@ -649,6 +838,7 @@ automate_comparison.py:generate_comparisons()
 | `safe_read_excel()` | Robust Excel reading | Handles corrupt files, multiple formats |
 | `check_file_accessibility()` | Proactive lock detection | Tests if file is open in Excel |
 | `apply_header_formatting()` | Excel header styling | Red fill for key columns: ID, status, comparison |
+| `create_comparison_zip()` | ⭐ Create zip archive | Creates `comparison.zip` with all comparison folders |
 
 ### **generate_email_report.py** ⭐
 
@@ -663,6 +853,14 @@ automate_comparison.py:generate_comparisons()
 
 **Key Logic in analyze_sc_sheet():**
 ```python
+# 0. CRITICAL: Detect correct SC status column based on report type ⭐ FIXED
+if report_type.lower() == "client":
+    sc_status_col = find_column('case')  # Client uses 'case' column
+else:
+    sc_status_col = find_column('status')  # WCB/Accreditation use 'status'
+# D365 always uses 'Status Reason'
+d365_status_col = find_column('Status Reason')
+
 # 1. Deduplicate D365 (matches Excel XLOOKUP first-match behavior)
 df_d365_dedup = df_d365.drop_duplicates(subset=['clean_id'], keep='first')
 
@@ -674,6 +872,8 @@ not_found = merged[d365_status_col].isna().sum()
 
 # 4. Count differences (where statuses exist but don't match)
 valid_rows = merged[d365_status_col].notna()
+sc_statuses = merged.loc[valid_rows, sc_status_col]  # Uses correct SC column
+d365_statuses = merged.loc[valid_rows, d365_status_col]
 differences = (sc_statuses != d365_statuses).sum()
 ```
 
@@ -697,12 +897,16 @@ status_breakdown = not_found_df['Status Reason'].value_counts().to_dict()
 | `setup_d365_tab()` | Creates Tab 1 UI | Bulk file upload zone with drag & drop |
 | `setup_extract_tab()` | Creates Tab 2 UI | ID extraction with console output |
 | `setup_sc_tab()` | Creates Tab 3 UI | SC file upload zone with drag & drop |
-| `setup_compare_tab()` | Creates Tab 4 UI | Comparison generation with console + email report |
+| `setup_compare_tab()` | Creates Tab 4 UI | ⭐ UPDATED: Unified output area (generation logs + email report in one) |
 | `handle_bulk_drop()` | Processes multi-file drag & drop | Auto-classifies files by name pattern matching |
 | `save_d365_files()` | Saves D365 files to input/dynamics/ | Copies files with validation |
 | `save_sc_files()` | Saves SC files to input/redash/ | Copies files with validation |
 | `extract_ids()` | Runs extraction in background thread | Captures stdout to console widget |
-| `generate_comparison()` | Runs comparison in background thread | Real-time console updates + auto email report |
+| `generate_comparison()` | Runs comparison in background thread | ⭐ UPDATED: Outputs to unified_output widget |
+| `comparison_complete()` | Handle comparison completion | ⭐ UPDATED: Calls auto_generate_email_report() |
+| `auto_generate_email_report()` | Generate email report after comparison | Runs in background thread, displays in unified output |
+| `display_email_report()` | Display email report in unified output | ⭐ NEW: Adds separator, header, and formatted email text |
+| `copy_email_to_clipboard()` | Copy email portion to clipboard | ⭐ UPDATED: Extracts only email report from unified output |
 | `check_upload_status()` | Enables/disables buttons | Checks if all 3 files uploaded per section |
 
 ---
@@ -722,7 +926,7 @@ SC Excel Files (3)
      ↓
 [Tab 3: Upload SC] → input/redash/
      ↓
-[Tab 4: Generate] → output/*.xlsx (Comparison Reports)
+[Tab 4: Generate] → output/{accreditation,wcb,client}/*.xlsx + comparison.zip
 ```
 
 ---
@@ -748,10 +952,16 @@ output/
 ├── query_ids/
 │   ├── accreditation_ids.sql.txt  # Fixed naming
 │   └── wcb_ids.sql.txt            # Fixed naming
-└── accreditation_comparison.xlsx   # Fixed naming
-    wcb_comparison.xlsx             # Fixed naming
-    client_comparison.xlsx          # Fixed naming
+├── accreditation/                 # ⭐ Accreditation folder
+│   └── Accreditation_Comparison.xlsx
+├── wcb/                           # ⭐ WCB folder
+│   └── WCB_Comparison.xlsx
+├── client/                        # ⭐ Client folder
+│   └── Client_Comparison.xlsx
+└── comparison.zip                 # ⭐ Zip archive of all comparison folders
 ```
+
+**⭐ = New organized structure**
 
 ---
 

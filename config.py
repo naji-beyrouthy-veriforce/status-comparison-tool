@@ -21,6 +21,12 @@ REDASH_DIR = INPUT_DIR / "redash"
 QUERY_IDS_DIR = OUTPUT_DIR / "query_ids"
 LOG_DIR = BASE_DIR / "logs"
 
+# Output subdirectories for each report type
+ACCREDITATION_OUTPUT_DIR = OUTPUT_DIR / "accreditation"
+WCB_OUTPUT_DIR = OUTPUT_DIR / "wcb"
+CLIENT_OUTPUT_DIR = OUTPUT_DIR / "client"
+COMPARISON_ZIP_PATH = OUTPUT_DIR / "comparison.zip"
+
 # ============================================================================
 # FILE PATTERNS FOR AUTO-DETECTION
 # ============================================================================
@@ -92,6 +98,13 @@ FILE_SAVE_RETRY_DELAY_SECONDS = 1
 # REPORT TYPES
 # ============================================================================
 REPORT_TYPES = ["accreditation", "wcb", "client"]
+
+# Mapping of report types to their output directories
+REPORT_OUTPUT_DIRS = {
+    "accreditation": ACCREDITATION_OUTPUT_DIR,
+    "wcb": WCB_OUTPUT_DIR,
+    "client": CLIENT_OUTPUT_DIR,
+}
 
 # ============================================================================
 # CRITICAL BUSINESS LOGIC DOCUMENTATION

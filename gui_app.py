@@ -461,19 +461,35 @@ class ComparisonApp:
         # Progress bar (hidden by default)
         self.compare_progress = ttk.Progressbar(btn_frame, bootstyle="info-striped", mode="indeterminate", length=300)
 
-        # Modern console output
-        console_label = tk.Label(
-            self.tab_compare, 
-            text="Output:", 
+        # Header with copy button
+        output_header_frame = ttk.Frame(self.tab_compare)
+        output_header_frame.pack(fill=tk.X, padx=20, pady=(20, 5))
+        
+        output_label = tk.Label(
+            output_header_frame, 
+            text="📊 Output:", 
             font=("Segoe UI", 10, "bold"),
             bg=self.colors['bg_dark'],
             fg=self.colors['text_primary']
         )
-        console_label.pack(anchor=tk.W, padx=20, pady=(20, 5))
+        output_label.pack(side=tk.LEFT)
+        
+        self.btn_copy_report = ttk.Button(
+            output_header_frame,
+            text="📋 Copy Email Report",
+            command=self.copy_email_to_clipboard,
+            bootstyle="success",
+            width=20,
+            state="disabled"
+        )
+        self.btn_copy_report.pack(side=tk.RIGHT)
+        
+        ToolTip(self.btn_copy_report, text="Copy email report to clipboard", bootstyle="success")
 
-        self.compare_console = scrolledtext.ScrolledText(
+        # Unified output console
+        self.unified_output = scrolledtext.ScrolledText(
             self.tab_compare,
-            height=12,
+            height=28,
             bg="#0d1117",
             fg="#58a6ff",
             font=("Consolas", 9),
@@ -483,55 +499,26 @@ class ComparisonApp:
             relief=tk.SOLID,
             bd=1,
         )
-        self.compare_console.pack(fill=tk.X, padx=20, pady=(0, 15))
-
-        # Email Report Section
-        email_header_frame = ttk.Frame(self.tab_compare)
-        email_header_frame.pack(fill=tk.X, padx=20, pady=(10, 5))
+        self.unified_output.pack(fill=tk.BOTH, expand=True, padx=20, pady=(0, 15))
         
-        email_label = tk.Label(
-            email_header_frame, 
-            text="📧 Email Report:", 
-            font=("Segoe UI", 10, "bold"),
-            bg=self.colors['bg_dark'],
-            fg=self.colors['text_primary']
-        )
-        email_label.pack(side=tk.LEFT)
-        
-        self.btn_copy_email = ttk.Button(
-            email_header_frame,
-            text="📋 Copy to Clipboard",
-            command=self.copy_email_to_clipboard,
-            bootstyle="success",
-            width=20,
-            state="disabled"
-        )
-        self.btn_copy_email.pack(side=tk.RIGHT)
-        
-        ToolTip(self.btn_copy_email, text="Copy email report to clipboard", bootstyle="success")
-
-        self.email_text = scrolledtext.ScrolledText(
-            self.tab_compare,
-            height=12,
-            bg="#f8fafc",
-            fg="#1e293b",
-            font=("Segoe UI", 10),
-            wrap=tk.WORD,
-            insertbackground="#1e293b",
-            selectbackground="#bfdbfe",
-            relief=tk.SOLID,
-            bd=1,
-        )
-        self.email_text.pack(fill=tk.BOTH, expand=True, padx=20, pady=(0, 15))
+        # Configure text tags for different sections
+        self.unified_output.tag_config("header", foreground="#10b981", font=("Consolas", 10, "bold"))
+        self.unified_output.tag_config("separator", foreground="#60a5fa")
+        self.unified_output.tag_config("email", foreground="#e5e5e5", font=("Consolas", 9))
+        self.unified_output.tag_config("success", foreground="#10b981")
+        self.unified_output.tag_config("error", foreground="#ef4444")
         
         # Add placeholder text
-        placeholder = "Email report will appear here after generating comparisons...\n\n" \
-                     "The report will show:\n" \
-                     "  • SC differences for each comparison type\n" \
-                     "  • D365 records not found in SafeContractor\n" \
-                     "  • Status breakdown by type"
-        self.email_text.insert("1.0", placeholder)
-        self.email_text.config(state="disabled")
+        placeholder = "Waiting to generate comparisons...\n\n" \
+                     "Click 'Generate Comparisons' to start:\n" \
+                     "  • Generates Excel comparison files\n" \
+                     "  • Creates comparison.zip archive\n" \
+                     "  • Displays email report with statistics"
+        self.unified_output.insert("1.0", placeholder)
+        self.unified_output.config(state="disabled")
+        
+        # Store email report start position for clipboard copying
+        self.email_report_start = None
 
     def classify_file(self, file_path, file_type_suffix):
         """
@@ -1072,7 +1059,9 @@ class ComparisonApp:
             return
 
         self.btn_compare.config(state=tk.DISABLED, text="⏳ Generating...")
-        self.compare_console.delete(1.0, tk.END)
+        self.unified_output.config(state="normal")
+        self.unified_output.delete(1.0, tk.END)
+        self.unified_output.config(state="disabled")
         self.status_var.set("Generating comparisons...")
 
         def run_comparison():
@@ -1093,9 +1082,11 @@ class ComparisonApp:
 
                 def _update_console(self, text):
                     if self.console:
+                        self.console.config(state="normal")
                         self.console.insert(tk.END, text)
                         self.console.see(tk.END)
                         self.console.update_idletasks()
+                        self.console.config(state="disabled")
 
                 def flush(self):
                     pass
@@ -1103,7 +1094,7 @@ class ComparisonApp:
                 def getvalue(self):
                     return self.buffer.getvalue()
 
-            stream = StreamToConsole(self.compare_console, self.root)
+            stream = StreamToConsole(self.unified_output, self.root)
 
             try:
                 old_stdout = sys.stdout
@@ -1125,8 +1116,11 @@ class ComparisonApp:
 
     def comparison_complete(self, output):
         """Handle comparison completion"""
-        self.compare_console.insert(tk.END, output)
-        self.compare_console.see(tk.END)
+        self.unified_output.config(state="normal")
+        self.unified_output.insert(tk.END, output)
+        self.unified_output.see(tk.END)
+        self.unified_output.config(state="disabled")
+        
         self.btn_compare.config(state=tk.NORMAL, text="🚀 Generate Comparisons")
         
         # Hide and stop progress bar
@@ -1134,16 +1128,16 @@ class ComparisonApp:
         self.compare_progress.pack_forget()
 
         if "Error" in output or "❌" in output:
-            self.status_var.set("Comparison generation failed - Check console for errors")
+            self.status_var.set("Comparison generation failed - Check output for errors")
             self.update_status_indicator("error")
             messagebox.showerror(
-                "Error", "Comparison generation failed. Check the console output for details."
+                "Error", "Comparison generation failed. Check the output for details."
             )
         else:
             self.status_var.set("Comparisons generated successfully!")
             self.update_status_indicator("success")
             
-            # Automatically generate email report
+            # Generate and display email report in the same output area
             self.auto_generate_email_report()
             
             # Automatically open the output folder
@@ -1153,8 +1147,7 @@ class ComparisonApp:
                 "Success",
                 f"{Messages.SUCCESS} Comparison files generated successfully!\n\n"
                 "The Excel files are ready in the output folder (opened automatically).\n"
-                "Email report generated and saved to output/email_report.txt.\n"
-                "Click 'Copy to Clipboard' below to use it in your email.",
+                "Email report displayed below - click 'Copy Email Report' to use it.",
             )
 
     def auto_generate_email_report(self):
@@ -1170,12 +1163,13 @@ class ComparisonApp:
                     analyze_d365_sheet,
                     format_status_name
                 )
+                from config import REPORT_OUTPUT_DIRS
                 
-                # Define comparison types and their file paths
+                # Define comparison types and their file paths (using new subfolder structure)
                 comparisons = {
-                    "Client": OUTPUT_DIR / "Client_Comparison.xlsx",
-                    "WCB": OUTPUT_DIR / "WCB_Comparison.xlsx",
-                    "Accreditation": OUTPUT_DIR / "Accreditation_Comparison.xlsx"
+                    "Client": REPORT_OUTPUT_DIRS["client"] / "Client_Comparison.xlsx",
+                    "WCB": REPORT_OUTPUT_DIRS["wcb"] / "WCB_Comparison.xlsx",
+                    "Accreditation": REPORT_OUTPUT_DIRS["accreditation"] / "Accreditation_Comparison.xlsx"
                 }
                 
                 # Check which files exist
@@ -1268,29 +1262,65 @@ class ComparisonApp:
             except Exception as e:
                 logger.exception(f"Email report generation failed: {str(e)}")
                 error_msg = f"\nNote: Email report generation failed: {str(e)}\n"
-                self.root.after(0, lambda msg=error_msg: self.compare_console.insert(tk.END, msg))
+                self.root.after(0, lambda msg=error_msg: self._insert_to_unified_output(msg, "error"))
         
         thread = threading.Thread(target=run_email_generation, daemon=True)
         thread.start()
     
     def display_email_report(self, email_text):
-        """Display the generated email report"""
-        # Update email text widget
-        self.email_text.config(state="normal")
-        self.email_text.delete("1.0", tk.END)
-        self.email_text.insert("1.0", email_text)
-        self.email_text.config(state="normal")  # Keep it editable in case user wants to modify
+        """Display the generated email report in the unified output"""
+        self.unified_output.config(state="normal")
+        
+        # Add separator
+        separator = "\n" + "="*70 + "\n"
+        self.unified_output.insert(tk.END, separator, "separator")
+        
+        # Add header
+        header = "📧 EMAIL REPORT\n"
+        self.unified_output.insert(tk.END, header, "header")
+        
+        separator2 = "="*70 + "\n\n"
+        self.unified_output.insert(tk.END, separator2, "separator")
+        
+        # Store position where email report starts (for clipboard copying)
+        self.email_report_start = self.unified_output.index(tk.INSERT)
+        
+        # Insert email report
+        self.unified_output.insert(tk.END, email_text, "email")
+        
+        # Scroll to show email report
+        self.unified_output.see(tk.END)
+        self.unified_output.config(state="disabled")
         
         # Enable copy button
-        self.btn_copy_email.config(state=tk.NORMAL)
+        self.btn_copy_report.config(state=tk.NORMAL)
         
         logger.info("Email report displayed successfully")
+    
+    def _insert_to_unified_output(self, text, tag=None):
+        """Helper method to insert text to unified output"""
+        self.unified_output.config(state="normal")
+        if tag:
+            self.unified_output.insert(tk.END, text, tag)
+        else:
+            self.unified_output.insert(tk.END, text)
+        self.unified_output.see(tk.END)
+        self.unified_output.config(state="disabled")
     
     def copy_email_to_clipboard(self):
         """Copy email report text to clipboard"""
         try:
-            # Get text from email_text widget
-            email_content = self.email_text.get("1.0", tk.END).strip()
+            # Get email report content only (from stored position to end)
+            if self.email_report_start:
+                email_content = self.unified_output.get(self.email_report_start, tk.END).strip()
+            else:
+                # Fallback: try to get from file if position not stored
+                email_file = OUTPUT_DIR / "email_report.txt"
+                if email_file.exists():
+                    with open(email_file, "r", encoding="utf-8") as f:
+                        email_content = f.read().strip()
+                else:
+                    email_content = ""
             
             if not email_content:
                 messagebox.showwarning("Warning", "No email report to copy!")

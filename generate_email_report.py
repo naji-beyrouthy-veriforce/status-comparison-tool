@@ -17,7 +17,7 @@ from datetime import datetime
 from collections import defaultdict
 
 # Import configuration
-from config import OUTPUT_DIR, REPORT_OUTPUT_DIRS, CLIENT_STATUS_COLUMN, setup_logging
+from config import OUTPUT_DIR, CLIENT_STATUS_COLUMN, setup_logging, get_dated_comparison_dir
 
 # Setup logging
 logger = setup_logging("email_report", console_output=True, file_output=True)
@@ -304,11 +304,14 @@ def generate_email_report():
     print("EMAIL REPORT GENERATOR")
     print("=" * 70)
     
-    # Define comparison types and their file paths (using new subfolder structure)
+    # Get the dated comparison directory
+    comparison_dir = get_dated_comparison_dir()
+    
+    # Define comparison types and their file paths
     comparisons = {
-        "Client": REPORT_OUTPUT_DIRS["client"] / "Client_Comparison.xlsx",
-        "WCB": REPORT_OUTPUT_DIRS["wcb"] / "WCB_Comparison.xlsx",
-        "Accreditation": REPORT_OUTPUT_DIRS["accreditation"] / "Accreditation_Comparison.xlsx"
+        "Client": comparison_dir / "Client_Comparison.xlsx",
+        "WCB": comparison_dir / "WCB_Comparison.xlsx",
+        "Accreditation": comparison_dir / "Accreditation_Comparison.xlsx"
     }
     
     # Check which files exist

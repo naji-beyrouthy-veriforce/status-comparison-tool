@@ -38,13 +38,12 @@ from config import (
     D365_FILES,
     SC_FILES,
     REPORT_TYPES,
-    REPORT_OUTPUT_DIRS,
-    COMPARISON_ZIP_PATH,
     MAX_FILE_SAVE_RETRIES,
     FILE_SAVE_RETRY_DELAY_SECONDS,
     CLIENT_STATUS_COLUMN,
     Messages,
     setup_logging,
+    get_dated_comparison_dir,
 )
 
 # Setup logging
@@ -62,7 +61,6 @@ from utils import (
     safe_read_excel,
     validate_uuid_data,
     check_file_accessibility,
-    create_comparison_zip,
 )
 
 # Import email report generation
@@ -505,14 +503,14 @@ def create_comparison_excel(report_type, df_d365, df_sc, include_qual_url=False)
             f"={comparison_col_letter}{row_idx}={d365_lookup_col_letter}{row_idx}",
         )
 
-    # Determine output directory based on report type
-    report_output_dir = REPORT_OUTPUT_DIRS.get(report_type.lower(), OUTPUT_DIR)
+    # Get dated comparison directory (e.g., output/comparison_2026-02-18/)
+    comparison_dir = get_dated_comparison_dir()
     
     # Create the directory if it doesn't exist
-    report_output_dir.mkdir(parents=True, exist_ok=True)
+    comparison_dir.mkdir(parents=True, exist_ok=True)
     
     # Save file with retry logic for locked files
-    output_file = report_output_dir / f"{report_type.title()}_Comparison.xlsx"
+    output_file = comparison_dir / f"{report_type.title()}_Comparison.xlsx"
 
     # Check if file is writable before attempting save
     if output_file.exists():
@@ -524,7 +522,7 @@ def create_comparison_excel(report_type, df_d365, df_sc, include_qual_url=False)
             # Try with timestamp immediately
 
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            output_file = report_output_dir / f"{report_type.title()}_Comparison_{timestamp}.xlsx"
+            output_file = comparison_dir / f"{report_type.title()}_Comparison_{timestamp}.xlsx"
             print(f"     💾 Saving as: {output_file.name}")
 
     # Try to save with retries
@@ -558,7 +556,7 @@ def create_comparison_excel(report_type, df_d365, df_sc, include_qual_url=False)
                 )
 
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                backup_file = report_output_dir / f"{report_type.title()}_Comparison_{timestamp}.xlsx"
+                backup_file = comparison_dir / f"{report_type.title()}_Comparison_{timestamp}.xlsx"
 
                 try:
                     wb.save(backup_file)
@@ -701,24 +699,12 @@ def generate_comparisons():
     logger.info(f"Comparison generation completed: {success_count} files created")
     print("\n" + "=" * 70)
     if success_count > 0:
-        print(f"SUCCESS! Created {success_count} comparison file(s) in output/")
+        # Get the comparison directory name
+        comparison_dir = get_dated_comparison_dir()
+        folder_name = comparison_dir.name
         
-        # Create zip file containing all comparison folders
-        print("\nCreating comparison.zip archive...")
-        folders_to_zip = [
-            REPORT_OUTPUT_DIRS["accreditation"],
-            REPORT_OUTPUT_DIRS["wcb"],
-            REPORT_OUTPUT_DIRS["client"]
-        ]
-        
-        success, message, zip_path = create_comparison_zip(folders_to_zip, COMPARISON_ZIP_PATH)
-        
-        if success:
-            logger.info(f"Successfully created comparison.zip: {message}")
-            print(Messages.success(message))
-        else:
-            logger.error(f"Failed to create comparison.zip: {message}")
-            print(Messages.warning(f"Could not create zip file: {message}"))
+        print(f"SUCCESS! Created {success_count} comparison file(s) in {folder_name}/")
+        print(f"         Location: {comparison_dir}")
         
         # Automatically generate email report
         print("\n" + "=" * 70)

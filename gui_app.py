@@ -20,7 +20,7 @@ import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
 
 # Import configuration and utilities
-from config import INPUT_DIR, OUTPUT_DIR, DYNAMICS_DIR, REDASH_DIR, QUERY_IDS_DIR, D365_FILES, SC_FILES, Messages, setup_logging
+from config import INPUT_DIR, OUTPUT_DIR, DYNAMICS_DIR, REDASH_DIR, QUERY_IDS_DIR, D365_FILES, SC_FILES, Messages, setup_logging, get_dated_comparison_dir
 
 # Import main processing functions
 from automate_comparison import extract_and_save_ids, generate_comparisons
@@ -1163,13 +1163,15 @@ class ComparisonApp:
                     analyze_d365_sheet,
                     format_status_name
                 )
-                from config import REPORT_OUTPUT_DIRS
                 
-                # Define comparison types and their file paths (using new subfolder structure)
+                # Get the dated comparison directory
+                comparison_dir = get_dated_comparison_dir()
+                
+                # Define comparison types and their file paths
                 comparisons = {
-                    "Client": REPORT_OUTPUT_DIRS["client"] / "Client_Comparison.xlsx",
-                    "WCB": REPORT_OUTPUT_DIRS["wcb"] / "WCB_Comparison.xlsx",
-                    "Accreditation": REPORT_OUTPUT_DIRS["accreditation"] / "Accreditation_Comparison.xlsx"
+                    "Client": comparison_dir / "Client_Comparison.xlsx",
+                    "WCB": comparison_dir / "WCB_Comparison.xlsx",
+                    "Accreditation": comparison_dir / "Accreditation_Comparison.xlsx"
                 }
                 
                 # Check which files exist

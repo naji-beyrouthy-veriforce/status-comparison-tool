@@ -21,11 +21,16 @@ REDASH_DIR = INPUT_DIR / "redash"
 QUERY_IDS_DIR = OUTPUT_DIR / "query_ids"
 LOG_DIR = BASE_DIR / "logs"
 
-# Output subdirectories for each report type
-ACCREDITATION_OUTPUT_DIR = OUTPUT_DIR / "accreditation"
-WCB_OUTPUT_DIR = OUTPUT_DIR / "wcb"
-CLIENT_OUTPUT_DIR = OUTPUT_DIR / "client"
-COMPARISON_ZIP_PATH = OUTPUT_DIR / "comparison.zip"
+def get_dated_comparison_dir():
+    """
+    Get the dated comparison directory for today's comparisons.
+    Creates a folder like: output/comparison_2026-02-18/
+    
+    Returns:
+        Path: Path to today's dated comparison folder
+    """
+    date_stamp = datetime.now().strftime("%Y-%m-%d")
+    return OUTPUT_DIR / f"comparison_{date_stamp}"
 
 # ============================================================================
 # FILE PATTERNS FOR AUTO-DETECTION
@@ -94,21 +99,10 @@ HEADER_FONT = Font(bold=True, color="000000")
 MAX_FILE_SAVE_RETRIES = 3
 FILE_SAVE_RETRY_DELAY_SECONDS = 1
 
-# Zip file settings
-MAX_ZIP_SIZE_MB = 25  # Maximum allowable zip file size in MB
-ZIP_COMPRESSION_LEVEL = 9  # Maximum compression (0-9)
-
 # ============================================================================
 # REPORT TYPES
 # ============================================================================
 REPORT_TYPES = ["accreditation", "wcb", "client"]
-
-# Mapping of report types to their output directories
-REPORT_OUTPUT_DIRS = {
-    "accreditation": ACCREDITATION_OUTPUT_DIR,
-    "wcb": WCB_OUTPUT_DIR,
-    "client": CLIENT_OUTPUT_DIR,
-}
 
 # ============================================================================
 # CRITICAL BUSINESS LOGIC DOCUMENTATION

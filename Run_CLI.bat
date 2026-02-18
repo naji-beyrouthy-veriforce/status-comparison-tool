@@ -2,7 +2,7 @@
 REM Quick launcher for command-line version
 REM This runs the script automatically to detect which step to perform
 
-title D365 Status Comparison - Auto Mode
+title D365 vs SafeContractor Status Comparison Tool - Auto Mode
 
 echo.
 echo ============================================================

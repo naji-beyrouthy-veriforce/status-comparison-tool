@@ -2,7 +2,7 @@
 REM D365 vs SafeContractor Status Comparison - Launcher
 REM This batch file launches the GUI application
 
-title D365 Status Comparison Tool
+title Status Comparison Tool
 
 echo.
 echo ============================================================

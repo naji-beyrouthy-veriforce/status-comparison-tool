@@ -1,16 +1,63 @@
 # Project Memory - Status Comparison Tool
-**Last Updated:** February 16, 2026  
+**Last Updated:** February 18, 2026  
 **Status:** ✅ Fully Functional - Manual Workflow  
-**Code Quality:** ✅ Technical Debt Resolved
+**Code Quality:** ✅ Technical Debt Resolved - Cleaned & Optimized
 
-**Latest Fixes (Feb 16, 2026):**
-- ✅ Fixed SC column detection bug (email report now shows correct difference counts)
-- ✅ Unified Tab 4 output (single display for generation logs + email report)
-- ✅ Smart clipboard copy (extracts only email portion)
+**Latest Updates (Feb 18, 2026):**
+- ✅ Comprehensive code cleanup completed
+- ✅ Removed unused functions and imports
+- ✅ Consolidated duplicate logic into reusable utilities
+- ✅ Improved code maintainability and consistency
 
 ---
 
 ## 📝 Recent Updates
+
+### Comprehensive Code Cleanup & Optimization
+**Date:** February 18, 2026
+
+✅ **Code Quality Improvements:**
+
+**1. Removed Unused Code:**
+- Deleted `create_comparison_zip()` function from utils.py (obsolete, never used)
+- Removed unused `zipfile` import from utils.py
+- Removed unused `defaultdict` import from generate_email_report.py
+
+**2. Consolidated Duplicate Logic:**
+- Created centralized `find_sc_status_column()` utility function in utils.py
+- Replaced duplicate SC status column finding logic in:
+  - automate_comparison.py (30+ lines → 1 function call)
+  - generate_email_report.py (30+ lines → 1 function call)
+- Replaced duplicate ID column finding loops with `find_column_by_keywords()` calls:
+  - generate_email_report.py: 4 duplicate loops → 4 function calls
+- Replaced duplicate Status Reason column finding loops with `find_column_by_keywords()` calls:
+  - generate_email_report.py: 2 duplicate loops → 2 function calls
+
+**3. Improved Code Organization:**
+- Standardized import statements across all modules
+- Ensured consistent use of centralized utility functions
+- Better separation of concerns (business logic vs. utility functions)
+
+**4. Naming Consistency Verified:**
+- Functions: All follow snake_case convention ✓
+- Classes: All follow PascalCase convention ✓
+- Constants: All follow UPPER_CASE convention ✓
+- Variables: All follow snake_case convention ✓
+
+**Benefits:**
+- **Reduced Code Duplication:** ~100+ lines of duplicate code eliminated
+- **Easier Maintenance:** Changes to column finding logic now only need to be made in one place
+- **Better Readability:** Code is more concise and easier to understand
+- **Consistent Patterns:** All modules use the same utility functions
+- **No Breaking Changes:** All existing functionality preserved
+
+**Files Modified:**
+- utils.py: Added `find_sc_status_column()`, removed `create_comparison_zip()`
+- automate_comparison.py: Uses new helper function for SC status columns
+- generate_email_report.py: Uses helper functions for all column finding operations
+- PROJECT_MEMORY.md: Updated with cleanup documentation
+
+---
 
 ### GUI Tab 4 Unified Output & SC Column Detection Fix
 **Date:** February 16, 2026
@@ -94,51 +141,39 @@ else:
 
 ---
 
-### Comparison Folders Organization & Zip Archive
-**Date:** February 16, 2026
+### Dated Comparison Directory Structure
+**Date:** February 2026
 
-✅ **What Was Added:**
-- **Organized Output Structure:** Comparison files now saved in dedicated subdirectories
-- **Automatic Zip Archive:** All comparison folders automatically zipped into `comparison.zip`
-- **Folder Structure:** Three subdirectories in output: `accreditation/`, `wcb/`, `client/`
-- **Single Archive File:** `comparison.zip` contains all three folders for easy sharing
+✅ **Current Output Organization:**
+- **Dated Folders:** Comparison files saved in dated subdirectories for better organization
+- **Folder Structure:** `output/comparison_YYYY-MM-DD/` contains all comparison files
+- **Automatic Cleanup:** Each day's comparisons are stored separately
 
 **Technical Implementation:**
 ```python
-# New directory structure
+# Directory structure
 output/
-├── accreditation/
-│   └── Accreditation_Comparison.xlsx
-├── wcb/
-│   └── WCB_Comparison.xlsx
-├── client/
+├── comparison_2026-02-18/
+│   ├── Accreditation_Comparison.xlsx
+│   ├── WCB_Comparison.xlsx
 │   └── Client_Comparison.xlsx
-└── comparison.zip  # Contains all three folders
+├── query_ids/
+│   ├── accreditation_ids.sql.txt
+│   ├── wcb_ids.sql.txt
+│   └── client_ids.sql.txt
+└── email_report.txt
 ```
 
-**Configuration Updates (config.py):**
-- Added `ACCREDITATION_OUTPUT_DIR`, `WCB_OUTPUT_DIR`, `CLIENT_OUTPUT_DIR`
-- Added `REPORT_OUTPUT_DIRS` mapping dictionary
-- Added `COMPARISON_ZIP_PATH` constant
-
-**Utility Function (utils.py):**
-- Added `create_comparison_zip()` function
-- Automatically creates zip archive with all comparison folders
-- Handles existing file cleanup and error scenarios
-
-**Workflow Integration:**
-- Subdirectories created automatically if they don't exist
-- Comparison files saved to their respective subdirectories
-- Zip file created automatically after successful comparison generation
-- **Email report generated automatically after zip creation** ⭐
-- Old zip file replaced with new one each run
+**Configuration (config.py):**
+- `get_dated_comparison_dir()` function returns today's comparison folder
+- Creates folder automatically if it doesn't exist
+- Keeps comparisons organized by date
 
 **Benefits:**
-- Better organization of output files
-- Easy to share all comparisons in one archive
-- Maintains folder structure for clarity
-- Automatic cleanup of previous zip file
-- **Fully automated workflow - no manual email report generation needed** ⭐
+- Easy to track when comparisons were generated
+- No file overwriting issues
+- Historical comparisons preserved
+- Clean organization
 
 ---
 
@@ -605,12 +640,15 @@ status_comparaison_tool/
 #### **config.py** - Configuration Hub
 - **Purpose:** Single source of truth for all constants
 - **Contents:**
-  - Directory paths (INPUT_DIR, OUTPUT_DIR, REPORT_OUTPUT_DIRS, COMPARISON_ZIP_PATH, etc.)
+  - Directory paths (INPUT_DIR, OUTPUT_DIR, DYNAMICS_DIR, REDASH_DIR, QUERY_IDS_DIR, LOG_DIR)
+  - Dated comparison directory function (`get_dated_comparison_dir()`)
   - File patterns (D365_PATTERNS, SC_PATTERNS)
   - Validation settings (MIN_FILE_SIZE_BYTES, ALLOWED_FILE_EXTENSIONS)
   - Retry logic constants (MAX_FILE_SAVE_RETRIES, FILE_SAVE_RETRY_DELAY_SECONDS)
   - Excel formatting (HEADER_FILL, HEADER_FONT, HIGHLIGHT_HEADERS)
+  - CLIENT_STATUS_COLUMN constant for proper client report handling
   - **Messages class** - All UI strings centralized
+  - Logging configuration (setup_logging function)
 - **Benefits:** Change configuration without touching business logic
 
 #### **utils.py** - Reusable Utilities
@@ -619,14 +657,14 @@ status_comparaison_tool/
   - `clean_uuid()` - Extract UUID from mixed text
   - `format_ids_for_sql()` - Format IDs for SQL IN clause
   - `find_column_by_keywords()` - Flexible column detection
+  - `find_sc_status_column()` - ✨ NEW: Centralized SC status column finder (handles CLIENT 'case' vs WCB/Accreditation 'status')
   - `validate_file_format()` - File validation with suggestions
   - `validate_dataframe()` - DataFrame structure validation
   - `validate_uuid_data()` - UUID quality checking
   - `safe_read_excel()` - Robust Excel reading
   - `check_file_accessibility()` - Proactive lock detection
   - `apply_header_formatting()` - Excel header styling
-  - `create_comparison_zip()` - ⭐ Create zip archive of comparison folders
-- **Benefits:** DRY principle, easy testing, reusability
+- **Benefits:** DRY principle, easy testing, reusability, reduced code duplication
 
 #### **automate_comparison.py** - Business Logic
 - **Purpose:** Core comparison workflow

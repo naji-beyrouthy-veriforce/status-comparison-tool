@@ -61,6 +61,7 @@ from utils import (
     safe_read_excel,
     validate_uuid_data,
     check_file_accessibility,
+    find_sc_status_column,
 )
 
 # Import email report generation
@@ -280,30 +281,8 @@ def create_comparison_excel(report_type, df_d365, df_sc, include_qual_url=False)
         or df_sc.columns[0]
     )
 
-    # Find status column in SC data
-    # CRITICAL: For CLIENT reports, the status is in the 'case' column, not a 'status' column
-    if report_type.lower() == "client":
-        # For client reports, look for CLIENT_STATUS_COLUMN which contains the status
-        status_col_sc = next(
-            (col for col in df_sc.columns if col.lower() == CLIENT_STATUS_COLUMN.lower()), None
-        )
-    else:
-        # For other reports, find any column with 'status' that isn't the ID column
-        status_col_sc = next(
-            (col for col in df_sc.columns if "status" in col.lower() and col != id_col_sc), None
-        )
-
-    # If status column not found by name, use the column after the ID column
-    if not status_col_sc:
-        id_col_index = df_sc.columns.get_loc(id_col_sc)
-        if id_col_index + 1 < len(df_sc.columns):
-            status_col_sc = df_sc.columns[id_col_index + 1]
-        else:
-            # Fallback: look for a column with string data that might be status
-            for col in df_sc.columns:
-                if col != id_col_sc and df_sc[col].dtype == "object":
-                    status_col_sc = col
-                    break
+    # Find status column in SC data using the centralized helper function
+    status_col_sc = find_sc_status_column(df_sc, id_col_sc, report_type)
 
     if not status_col_sc:
         print(f"     {Messages.STATUS_COLUMN_MISSING}")

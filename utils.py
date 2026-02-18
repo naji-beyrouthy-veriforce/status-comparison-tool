@@ -5,7 +5,6 @@ Reusable helper functions for file handling, data cleaning, and validation
 
 import pandas as pd
 from pathlib import Path
-import zipfile
 from config import (
     UUID_PATTERN,
     ALLOWED_FILE_EXTENSIONS,
@@ -449,51 +448,54 @@ def check_file_accessibility(file_path, mode="read"):
         return False, f"Access error: {str(e)}", "Check file permissions and try again"
 
 
-def create_comparison_zip(folders_to_zip, output_zip_path):
+def find_sc_status_column(df_sc, id_col_sc, report_type):
     """
-    Create a zip file containing the specified folders with maximum LZMA compression.
+    Find the appropriate status column in SafeContractor data based on report type.
+    
+    Critical business logic:
+    - CLIENT reports: Status is in the 'case' column (from Redash query structure)
+    - ACCREDITATION/WCB reports: Status is in the 'status' column
     
     Args:
-        folders_to_zip: List of Path objects representing directories to zip
-        output_zip_path: Path object for the output zip file
+        df_sc: SafeContractor DataFrame
+        id_col_sc: Name of the ID column in SC data
+        report_type: Type of report ('client', 'wcb', or 'accreditation')
         
     Returns:
-        tuple: (success: bool, message: str, zip_path: Path or None)
+        str: Column name containing status, or None if not found
         
     Example:
-        >>> folders = [Path("output/accreditation"), Path("output/wcb"), Path("output/client")]
-        >>> success, msg, path = create_comparison_zip(folders, Path("output/comparison.zip"))
+        >>> status_col = find_sc_status_column(df_sc, 'Global Alcumus ID', 'client')
+        >>> # Returns 'case' for client reports
     """
-    try:
-        # Remove existing zip file if it exists
-        if output_zip_path.exists():
-            output_zip_path.unlink()
-        
-        # Create the zip file with LZMA compression (produces smallest file size)
-        with zipfile.ZipFile(output_zip_path, 'w', zipfile.ZIP_LZMA) as zipf:
-            for folder in folders_to_zip:
-                if not folder.exists():
-                    continue
-                    
-                # Add all files in the folder to the zip
-                for file_path in folder.rglob('*'):
-                    if file_path.is_file():
-                        # Calculate the archive name (relative path from parent of folder)
-                        arcname = file_path.relative_to(folder.parent)
-                        zipf.write(file_path, arcname)
-        
-        # Verify the zip was created
-        if output_zip_path.exists() and output_zip_path.stat().st_size > 0:
-            file_size = output_zip_path.stat().st_size
-            size_mb = file_size / (1024 * 1024)
-            zip_name = output_zip_path.name
-            
-            success_msg = f"Successfully created {zip_name} ({size_mb:.2f} MB)"
-            return (True, success_msg, output_zip_path)
-        else:
-            return (False, "Zip file was created but is empty or invalid", None)
-            
-    except PermissionError:
-        return (False, f"Cannot create zip file: Permission denied", None)
-    except Exception as e:
-        return (False, f"Error creating zip file: {str(e)}", None)
+    from config import CLIENT_STATUS_COLUMN
+    
+    status_col_sc = None
+    
+    if report_type.lower() == "client":
+        # For client reports, look for CLIENT_STATUS_COLUMN which contains the status
+        status_col_sc = next(
+            (col for col in df_sc.columns if col.lower() == CLIENT_STATUS_COLUMN.lower()), None
+        )
+    else:
+        # For other reports (WCB/Accreditation), find any column with 'status' that isn't the ID column
+        status_col_sc = next(
+            (col for col in df_sc.columns if "status" in col.lower() and col != id_col_sc), None
+        )
+    
+    # If status column not found by name, use the column after the ID column as fallback
+    if not status_col_sc and id_col_sc in df_sc.columns:
+        try:
+            id_col_index = list(df_sc.columns).index(id_col_sc)
+            if id_col_index + 1 < len(df_sc.columns):
+                status_col_sc = df_sc.columns[id_col_index + 1]
+            else:
+                # Fallback: look for a column with string data that might be status
+                for col in df_sc.columns:
+                    if col != id_col_sc and df_sc[col].dtype == "object":
+                        status_col_sc = col
+                        break
+        except (ValueError, IndexError):
+            pass
+    
+    return status_col_sc

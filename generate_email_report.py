@@ -14,10 +14,12 @@ import pandas as pd
 from pathlib import Path
 import sys
 from datetime import datetime
-from collections import defaultdict
 
 # Import configuration
-from config import OUTPUT_DIR, CLIENT_STATUS_COLUMN, setup_logging, get_dated_comparison_dir
+from config import OUTPUT_DIR, setup_logging, get_dated_comparison_dir
+
+# Import utilities  
+from utils import find_sc_status_column, find_column_by_keywords
 
 # Setup logging
 logger = setup_logging("email_report", console_output=True, file_output=True)
@@ -73,18 +75,9 @@ def analyze_sc_sheet(df_sc, df_d365, report_type="client"):
         logger.warning(f"Empty or None dataframes for {report_type} SC analysis")
         return {"differences": 0, "not_found": 0}
     
-    # Find ID columns
-    sc_id_col = None
-    for col in df_sc.columns:
-        if col and "global" in str(col).lower() and "id" in str(col).lower():
-            sc_id_col = col
-            break
-    
-    d365_id_col = None
-    for col in df_d365.columns:
-        if col and "global" in str(col).lower() and "id" in str(col).lower():
-            d365_id_col = col
-            break
+    # Find ID columns using centralized helper function
+    sc_id_col = find_column_by_keywords(df_sc.columns, ("global", "alcumus", "id"))
+    d365_id_col = find_column_by_keywords(df_d365.columns, ("global", "alcumus", "id"))
     
     if sc_id_col is None or d365_id_col is None:
         logger.warning(f"Could not find ID columns for {report_type}")
@@ -93,41 +86,11 @@ def analyze_sc_sheet(df_sc, df_d365, report_type="client"):
     logger.debug(f"Found ID columns for {report_type} - SC: {sc_id_col}, D365: {d365_id_col}")
     
     # Find status columns
-    # D365 always has "Status Reason" column
-    d365_status_col = None
-    for col in df_d365.columns:
-        if col and "status" in str(col).lower() and "reason" in str(col).lower():
-            d365_status_col = col
-            break
+    # D365 always has "Status Reason" column - use centralized helper function
+    d365_status_col = find_column_by_keywords(df_d365.columns, ("status", "reason"))
     
-    # SC status column varies by report type
-    # CRITICAL: For CLIENT reports, the status is in the 'case' column, not a 'status' column
-    sc_status_col = None
-    if report_type.lower() == "client":
-        # For client reports, look for CLIENT_STATUS_COLUMN which contains the status
-        sc_status_col = next(
-            (col for col in df_sc.columns if col.lower() == CLIENT_STATUS_COLUMN.lower()), None
-        )
-    else:
-        # For other reports (WCB/Accreditation), find any column with 'status' that isn't the ID column
-        sc_status_col = next(
-            (col for col in df_sc.columns if "status" in col.lower() and col != sc_id_col), None
-        )
-    
-    # If status column not found by name, use the column after the ID column as fallback
-    if not sc_status_col:
-        try:
-            id_col_index = list(df_sc.columns).index(sc_id_col)
-            if id_col_index + 1 < len(df_sc.columns):
-                sc_status_col = df_sc.columns[id_col_index + 1]
-            else:
-                # Fallback: look for a column with string data that might be status
-                for col in df_sc.columns:
-                    if col != sc_id_col and df_sc[col].dtype == "object":
-                        sc_status_col = col
-                        break
-        except (ValueError, IndexError):
-            pass
+    # SC status column varies by report type - use centralized helper function
+    sc_status_col = find_sc_status_column(df_sc, sc_id_col, report_type)
     
     if sc_status_col is None or d365_status_col is None:
         logger.warning(f"Could not find status columns for {report_type}: SC={sc_status_col}, D365={d365_status_col}")
@@ -201,18 +164,9 @@ def analyze_d365_sheet(df_d365, df_sc, report_type="client"):
         logger.warning(f"Empty or None dataframes for {report_type} D365 analysis")
         return {"total_not_found": 0, "status_breakdown": {}}
     
-    # Find ID columns
-    d365_id_col = None
-    for col in df_d365.columns:
-        if col and "global" in str(col).lower() and "id" in str(col).lower():
-            d365_id_col = col
-            break
-    
-    sc_id_col = None
-    for col in df_sc.columns:
-        if col and "global" in str(col).lower() and "id" in str(col).lower():
-            sc_id_col = col
-            break
+    # Find ID columns using centralized helper function
+    d365_id_col = find_column_by_keywords(df_d365.columns, ("global", "alcumus", "id"))
+    sc_id_col = find_column_by_keywords(df_sc.columns, ("global", "alcumus", "id"))
     
     if d365_id_col is None or sc_id_col is None:
         logger.warning(f"Could not find ID columns for D365 analysis")
@@ -220,12 +174,8 @@ def analyze_d365_sheet(df_d365, df_sc, report_type="client"):
     
     logger.debug(f"Found ID columns for D365 analysis - D365: {d365_id_col}, SC: {sc_id_col}")
     
-    # Find Status Reason column
-    status_reason_col = None
-    for col in df_d365.columns:
-        if col and "status" in str(col).lower() and "reason" in str(col).lower():
-            status_reason_col = col
-            break
+    # Find Status Reason column using centralized helper function
+    status_reason_col = find_column_by_keywords(df_d365.columns, ("status", "reason"))
     
     if status_reason_col is None:
         logger.warning("Could not find 'Status Reason' column in D365 sheet")

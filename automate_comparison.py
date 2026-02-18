@@ -716,7 +716,6 @@ def generate_comparisons():
         if success:
             logger.info(f"Successfully created comparison.zip: {message}")
             print(Messages.success(message))
-            print(f"     📦 Location: {COMPARISON_ZIP_PATH}")
         else:
             logger.error(f"Failed to create comparison.zip: {message}")
             print(Messages.warning(f"Could not create zip file: {message}"))

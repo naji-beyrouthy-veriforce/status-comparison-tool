@@ -94,6 +94,10 @@ HEADER_FONT = Font(bold=True, color="000000")
 MAX_FILE_SAVE_RETRIES = 3
 FILE_SAVE_RETRY_DELAY_SECONDS = 1
 
+# Zip file settings
+MAX_ZIP_SIZE_MB = 25  # Maximum allowable zip file size in MB
+ZIP_COMPRESSION_LEVEL = 9  # Maximum compression (0-9)
+
 # ============================================================================
 # REPORT TYPES
 # ============================================================================

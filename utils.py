@@ -451,7 +451,7 @@ def check_file_accessibility(file_path, mode="read"):
 
 def create_comparison_zip(folders_to_zip, output_zip_path):
     """
-    Create a zip file containing the specified folders.
+    Create a zip file containing the specified folders with maximum LZMA compression.
     
     Args:
         folders_to_zip: List of Path objects representing directories to zip
@@ -464,13 +464,15 @@ def create_comparison_zip(folders_to_zip, output_zip_path):
         >>> folders = [Path("output/accreditation"), Path("output/wcb"), Path("output/client")]
         >>> success, msg, path = create_comparison_zip(folders, Path("output/comparison.zip"))
     """
+    from config import MAX_ZIP_SIZE_MB
+    
     try:
         # Remove existing zip file if it exists
         if output_zip_path.exists():
             output_zip_path.unlink()
         
-        # Create the zip file
-        with zipfile.ZipFile(output_zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+        # Create the zip file with LZMA compression (better for already-compressed Excel files)
+        with zipfile.ZipFile(output_zip_path, 'w', zipfile.ZIP_LZMA) as zipf:
             for folder in folders_to_zip:
                 if not folder.exists():
                     continue
@@ -482,11 +484,22 @@ def create_comparison_zip(folders_to_zip, output_zip_path):
                         arcname = file_path.relative_to(folder.parent)
                         zipf.write(file_path, arcname)
         
-        # Verify the zip was created
+        # Verify the zip was created and check size
         if output_zip_path.exists() and output_zip_path.stat().st_size > 0:
             file_size = output_zip_path.stat().st_size
-            size_kb = file_size / 1024
-            return (True, f"Successfully created comparison.zip ({size_kb:.1f} KB)", output_zip_path)
+            size_mb = file_size / (1024 * 1024)
+            
+            # Check if file exceeds maximum size
+            if size_mb > MAX_ZIP_SIZE_MB:
+                warning_msg = (
+                    f"⚠️ WARNING: comparison.zip size ({size_mb:.2f} MB) exceeds {MAX_ZIP_SIZE_MB} MB limit!\n"
+                    f"     The file may be too large for email attachments.\n"
+                    f"     Consider uploading to a file sharing service instead."
+                )
+                return (True, warning_msg, output_zip_path)
+            else:
+                success_msg = f"Successfully created comparison.zip ({size_mb:.2f} MB / {MAX_ZIP_SIZE_MB} MB limit)"
+                return (True, success_msg, output_zip_path)
         else:
             return (False, "Zip file was created but is empty or invalid", None)
             

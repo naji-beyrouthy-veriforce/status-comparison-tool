@@ -162,7 +162,7 @@ class ComparisonApp:
             fg=self.colors['accent_blue'],
         ).pack(anchor=tk.W, padx=20, pady=(15, 5))
 
-        instruction_text = "Drag & drop all 3 D365 files at once. The system will automatically detect Accreditation, WCB, and Client files."
+        instruction_text = "Drag & drop your D365 files (any combination of Accreditation, WCB, Client). Not all 3 are required."
 
         tk.Label(
             info_frame,
@@ -198,7 +198,7 @@ class ComparisonApp:
 
         tk.Label(
             bulk_drop,
-            text="🚀 DRAG & DROP ALL 3 D365 FILES HERE\n\nSystem will automatically identify Accreditation, WCB, and Client files",
+            text="🚀 DRAG & DROP D365 FILES HERE\n\nDrop one or more files — Accreditation, WCB, and/or Client",
             bg="#2a3f5f",
             fg="#93c5fd",
             font=("Segoe UI", 11, "bold"),
@@ -334,7 +334,7 @@ class ComparisonApp:
 
         tk.Label(
             info_frame,
-            text="Drag & drop all 3 SafeContractor files at once. The system will automatically detect Accreditation, WCB, and Client files.",
+            text="Drag & drop your SafeContractor files (any combination of Accreditation, WCB, Client). Not all 3 are required.",
             bg=self.colors['bg_card'],
             fg=self.colors['text_secondary'],
             font=("Segoe UI", 10),
@@ -366,7 +366,7 @@ class ComparisonApp:
 
         tk.Label(
             bulk_drop,
-            text="🚀 DRAG & DROP ALL 3 SAFECONTRACTOR FILES HERE\n(System will auto-detect Accreditation, WCB, and Client files)",
+            text="🚀 DRAG & DROP SAFECONTRACTOR FILES HERE\n(Drop one or more files — Accreditation, WCB, and/or Client)",
             bg="#1f3a2c",
             fg="#6ee7b7",
             font=("Segoe UI", 11, "bold"),
@@ -799,20 +799,20 @@ class ComparisonApp:
             self.status_indicator.itemconfig(self.status_dot, fill="#6b7280")
 
     def check_upload_status(self):
-        """Check if all required files are uploaded and enable buttons"""
-        # Check D365 files
-        d365_complete = all(
+        """Check if any files are uploaded and enable buttons"""
+        # Check D365 files - enable button if ANY file is uploaded
+        d365_any = any(
             self.uploaded_files[k] for k in ["accreditation_d365", "wcb_d365", "client_d365"]
         )
         if hasattr(self, "btn_process_d365"):
-            self.btn_process_d365.config(state=tk.NORMAL if d365_complete else tk.DISABLED)
+            self.btn_process_d365.config(state=tk.NORMAL if d365_any else tk.DISABLED)
 
-        # Check SC files
-        sc_complete = all(
+        # Check SC files - enable button if ANY file is uploaded
+        sc_any = any(
             self.uploaded_files[k] for k in ["accreditation_sc", "wcb_sc", "client_sc"]
         )
         if hasattr(self, "btn_process_sc"):
-            self.btn_process_sc.config(state=tk.NORMAL if sc_complete else tk.DISABLED)
+            self.btn_process_sc.config(state=tk.NORMAL if sc_any else tk.DISABLED)
 
     def check_existing_files(self):
         """Check for existing files in input folder and mark as uploaded"""
@@ -886,13 +886,15 @@ class ComparisonApp:
         self.root.destroy()
 
     def save_d365_files(self):
-        """Copy D365 files to input folder"""
+        """Copy uploaded D365 files to input folder (only files that were uploaded)"""
         try:
             logger.info("Starting D365 file save process")
             DYNAMICS_DIR.mkdir(parents=True, exist_ok=True)
             
             saved_files = []
+            skipped_files = []
             for key in ["accreditation_d365", "wcb_d365", "client_d365"]:
+                report_type = key.replace("_d365", "")
                 if self.uploaded_files[key]:
                     source = Path(self.uploaded_files[key])
 
@@ -900,8 +902,6 @@ class ComparisonApp:
                     if not source.exists():
                         raise FileNotFoundError(f"Source file not found: {source}")
 
-                    # Strip _d365 suffix to get the report type
-                    report_type = key.replace("_d365", "")
                     dest = DYNAMICS_DIR / D365_FILES[report_type]
 
                     # Ensure destination path is valid
@@ -910,16 +910,22 @@ class ComparisonApp:
                     shutil.copy2(str(source), str(dest))
                     saved_files.append(report_type)
                     logger.info(f"Saved D365 {report_type} file: {source.name} -> {dest.name}")
+                else:
+                    skipped_files.append(report_type)
             
             logger.info(f"Successfully saved {len(saved_files)} D365 files: {', '.join(saved_files)}")
-            messagebox.showinfo(
-                "Success",
-                f"{Messages.SUCCESS} D365 files saved successfully!\n\nNext step: Go to 'Extract IDs' tab to generate ID lists for Redash.",
-            )
+            if skipped_files:
+                logger.info(f"Skipped (not uploaded): {', '.join(skipped_files)}")
+            
+            msg = f"{Messages.SUCCESS} Saved {len(saved_files)} D365 file(s): {', '.join(f.title() for f in saved_files)}"
+            if skipped_files:
+                msg += f"\n\nSkipped (not uploaded): {', '.join(f.title() for f in skipped_files)}"
+            msg += "\n\nNext step: Go to 'Extract IDs' tab to generate ID lists for Redash."
+            messagebox.showinfo("Success", msg)
 
             # Always go to Extract IDs tab in manual mode
             self.notebook.select(1)  # Switch to Extract IDs tab
-            self.status_var.set("D365 files saved - Ready to extract IDs")
+            self.status_var.set(f"Saved {len(saved_files)} D365 file(s) - Ready to extract IDs")
             self.update_status_indicator("success")
 
         except Exception as e:
@@ -928,13 +934,15 @@ class ComparisonApp:
             self.update_status_indicator("error")
 
     def save_sc_files(self):
-        """Copy SafeContractor files to input folder"""
+        """Copy uploaded SafeContractor files to input folder (only files that were uploaded)"""
         try:
             logger.info("Starting SC file save process")
             REDASH_DIR.mkdir(parents=True, exist_ok=True)
             
             saved_files = []
+            skipped_files = []
             for key in ["accreditation_sc", "wcb_sc", "client_sc"]:
+                report_type = key.replace("_sc", "")
                 if self.uploaded_files[key]:
                     source = Path(self.uploaded_files[key])
 
@@ -942,8 +950,6 @@ class ComparisonApp:
                     if not source.exists():
                         raise FileNotFoundError(f"Source file not found: {source}")
 
-                    # Strip _sc suffix to get the report type
-                    report_type = key.replace("_sc", "")
                     dest = REDASH_DIR / SC_FILES[report_type]
 
                     # Ensure destination path is valid
@@ -952,14 +958,20 @@ class ComparisonApp:
                     shutil.copy2(str(source), str(dest))
                     saved_files.append(report_type)
                     logger.info(f"Saved SC {report_type} file: {source.name} -> {dest.name}")
+                else:
+                    skipped_files.append(report_type)
             
             logger.info(f"Successfully saved {len(saved_files)} SC files: {', '.join(saved_files)}")
-            messagebox.showinfo(
-                "Success",
-                f"{Messages.SUCCESS} SC files saved successfully!\n\nNext step: Go to 'Generate Comparisons' tab to create comparison reports.",
-            )
+            if skipped_files:
+                logger.info(f"Skipped (not uploaded): {', '.join(skipped_files)}")
+            
+            msg = f"{Messages.SUCCESS} Saved {len(saved_files)} SC file(s): {', '.join(f.title() for f in saved_files)}"
+            if skipped_files:
+                msg += f"\n\nSkipped (not uploaded): {', '.join(f.title() for f in skipped_files)}"
+            msg += "\n\nNext step: Go to 'Generate Comparisons' tab to create comparison reports."
+            messagebox.showinfo("Success", msg)
             self.notebook.select(3)  # Switch to Generate Comparisons tab
-            self.status_var.set("SC files saved - Ready to generate comparisons")
+            self.status_var.set(f"Saved {len(saved_files)} SC file(s) - Ready to generate comparisons")
             self.update_status_indicator("success")
 
         except Exception as e:

@@ -717,8 +717,8 @@ def main():
     print("Manual Workflow Mode")
     print("=" * 70)
 
-    # Check if SC files exist (determines which step to run)
-    sc_files_exist = all(
+    # Check if any SC files exist (determines which step to run)
+    sc_files_exist = any(
         find_file_by_pattern(REDASH_DIR, SC_PATTERNS[t]) is not None for t in REPORT_TYPES
     )
 

@@ -1,11 +1,20 @@
 # Project Memory - Status Comparison Tool
-**Last Updated:** February 18, 2026  
+**Last Updated:** February 24, 2026  
 **Status:** Fully Functional - Manual Workflow  
 **Code Quality:** Technical Debt Resolved
 
 ---
 
 ## Recent Critical Updates
+
+### Feb 24, 2026 - Partial File Support
+- **Change:** Not all 3 report types (Accreditation, WCB, Client) are required to run
+- Upload/Save/Generate buttons now enable with ANY file uploaded (was: ALL required)
+- `save_d365_files()` and `save_sc_files()` skip unuploaded files and report what was saved/skipped
+- CLI `main()` in automate_comparison.py uses `any()` instead of `all()` for SC file check
+- `generate_comparisons()` and `extract_and_save_ids()` already gracefully skip missing files
+- `generate_email_report.py` already handles partial results (only processes available files)
+- Updated UI text: drop zones and instructions no longer say "all 3 required"
 
 ### Feb 18, 2026 - Code Cleanup
 - Created centralized `find_sc_status_column()` in utils.py

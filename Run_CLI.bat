@@ -26,7 +26,7 @@ if errorlevel 1 (
 )
 
 REM Run the script
-python automate_comparison.py
+python main.py
 
 echo.
 echo ============================================================

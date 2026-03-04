@@ -93,7 +93,7 @@ WCB:
 ```
 status_comparaison_tool/
 ├── gui_app.py                 # Dark-themed GUI application
-├── automate_comparison.py     # Core comparison logic
+├── main.py                    # Core comparison logic
 ├── config.py                  # Centralized configuration
 ├── utils.py                   # Utility functions
 ├── requirements.txt           # Dependencies

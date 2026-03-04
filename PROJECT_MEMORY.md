@@ -11,7 +11,7 @@
 - **Change:** Not all 3 report types (Accreditation, WCB, Client) are required to run
 - Upload/Save/Generate buttons now enable with ANY file uploaded (was: ALL required)
 - `save_d365_files()` and `save_sc_files()` skip unuploaded files and report what was saved/skipped
-- CLI `main()` in automate_comparison.py uses `any()` instead of `all()` for SC file check
+- CLI `main()` in main.py uses `any()` instead of `all()` for SC file check
 - `generate_comparisons()` and `extract_and_save_ids()` already gracefully skip missing files
 - `generate_email_report.py` already handles partial results (only processes available files)
 - Updated UI text: drop zones and instructions no longer say "all 3 required"
@@ -68,7 +68,7 @@ merged = df_sc.merge(df_d365_dedup[['clean_id', 'Status Reason']], on='clean_id'
 Compare status records between Dynamics 365 (D365) and SafeContractor (SC) for three report types: Client, WCB, Accreditation.
 
 **Key Components:**
-- `automate_comparison.py` - Creates Excel files with XLOOKUP formulas
+- `main.py` - Creates Excel files with XLOOKUP formulas
 - `generate_email_report.py` - Replicates formulas to generate reports
 - `gui_app.py` - 4-tab manual workflow interface
 - `config.py` - All constants, patterns, Messages class
@@ -219,7 +219,7 @@ status_breakdown = not_found_df['Status Reason'].value_counts()
 
 ## Key Functions
 
-### automate_comparison.py
+### main.py
 - `extract_and_save_ids()` - Extracts IDs from D365 files (WCB/Accreditation only)
 - `create_comparison_excel()` - Generates 2-sheet workbooks with XLOOKUP formulas
 - `generate_comparisons()` - Orchestrates all comparisons
@@ -312,7 +312,7 @@ QUERY_IDS = {"accreditation": 1266, "wcb": 1281, "client": 1277}
 **How:** Keyword-based detection for files and columns
 
 ### 7. Modular Architecture
-**Structure:** config.py → utils.py → automate_comparison.py/generate_email_report.py → gui_app.py  
+**Structure:** config.py → utils.py → main.py/generate_email_report.py → gui_app.py  
 **Benefit:** Clear separation, testability, reusability
 
 ### 8. Background Threading
@@ -343,7 +343,7 @@ D365 Excel → [Tab 1 Upload] → input/dynamics/
 
 ```
 status_comparaison_tool/
-├── automate_comparison.py    # Core logic
+├── main.py                   # Core logic
 ├── generate_email_report.py  # Email report generator
 ├── config.py                 # Constants, Messages class
 ├── utils.py                  # Reusable utilities
@@ -382,7 +382,7 @@ status_comparaison_tool/
 ## Common Modifications
 
 ### Add New Report Type
-1. Update `D365_PATTERNS` and `SC_PATTERNS` in automate_comparison.py
+1. Update `D365_PATTERNS` and `SC_PATTERNS` in main.py
 2. Update `D365_FILES` and `SC_FILES` dictionaries
 3. Update `gui_app.py` `uploaded_files` dictionary
 4. Add Redash query ID if needed

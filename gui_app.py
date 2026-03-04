@@ -23,7 +23,7 @@ warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
 from config import INPUT_DIR, OUTPUT_DIR, DYNAMICS_DIR, REDASH_DIR, QUERY_IDS_DIR, D365_FILES, SC_FILES, Messages, setup_logging, get_dated_comparison_dir
 
 # Import main processing functions
-from automate_comparison import extract_and_save_ids, generate_comparisons
+from main import extract_and_save_ids, generate_comparisons
 
 # Setup logging for GUI
 logger = setup_logging("comparison_tool_gui", console_output=False, file_output=True)
@@ -525,7 +525,7 @@ class ComparisonApp:
         Automatically classify a file based on its name
         Returns the key (e.g., 'accreditation_d365') or None if can't classify
         """
-        from automate_comparison import D365_PATTERNS, SC_PATTERNS
+        from main import D365_PATTERNS, SC_PATTERNS
 
         filename_lower = Path(file_path).name.lower()
         patterns = D365_PATTERNS if file_type_suffix == "d365" else SC_PATTERNS

@@ -343,28 +343,34 @@ def generate_email_report():
         
         data = results[name]
         
-        # Section header
+        # Section header with display name
         if name == "Client":
-            email_lines.append("Client specific:\n")
-            email_lines.append("SC:")
+            display_name = "Client Specific"
         else:
-            email_lines.append(f"\n{name}:\n")
-            email_lines.append("SC:")
+            display_name = name
+        
+        # Add blank line between sections (not before the first one)
+        if email_lines:
+            email_lines.append("")
+        
+        email_lines.append(f"{display_name}:")
         
         # SC statistics
         sc_diff = data["sc"]["differences"]
         sc_not_found = data["sc"]["not_found"]
         
+        email_lines.append("• SC:")
         if sc_not_found > 0:
-            email_lines.append(f"{sc_diff} differences between dynamics and SafeContractor, {sc_not_found} Not found")
+            email_lines.append(f"\t○ {sc_diff} differences between dynamics and SafeContractor, {sc_not_found} Not found")
         else:
-            email_lines.append(f"{sc_diff} differences between dynamics and SafeContractor")
+            email_lines.append(f"\t○ {sc_diff} differences between dynamics and SafeContractor")
         
         # D365 statistics
-        email_lines.append("\nD365:")
+        email_lines.append("")
+        email_lines.append("• D365:")
         
         total_not_found = data["d365"]["total_not_found"]
-        email_lines.append(f"{total_not_found} not found in SafeContractor:")
+        email_lines.append(f"\t○ {total_not_found} not found in SafeContractor:")
         
         # Sort status breakdown alphabetically for consistency
         status_breakdown = data["d365"]["status_breakdown"]
@@ -372,7 +378,7 @@ def generate_email_report():
             sorted_statuses = sorted(status_breakdown.items(), key=lambda x: x[0])
             for status, count in sorted_statuses:
                 formatted_status = format_status_name(status)
-                email_lines.append(f"{count} {formatted_status}")
+                email_lines.append(f"\t\t▪ {count} {formatted_status}")
     
     # Join all lines
     email_text = "\n".join(email_lines)

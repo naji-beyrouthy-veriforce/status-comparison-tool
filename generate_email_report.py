@@ -378,7 +378,7 @@ def generate_email_report():
             sorted_statuses = sorted(status_breakdown.items(), key=lambda x: x[0])
             for status, count in sorted_statuses:
                 formatted_status = format_status_name(status)
-                email_lines.append(f"\t\t▪ {count} {formatted_status}")
+                email_lines.append(f"{count} {formatted_status}")
     
     # Join all lines
     email_text = "\n".join(email_lines)

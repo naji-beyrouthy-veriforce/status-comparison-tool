@@ -4,6 +4,9 @@ REM This batch file launches the GUI application
 
 title Status Comparison Tool
 
+REM Set Redash API key for automated mode
+set REDASH_API_KEY=RpWSRcBbV8IHkvXumk442ttCiU2j9XLSa0niHXRD
+
 echo.
 echo ============================================================
 echo  D365 vs SafeContractor Status Comparison Tool

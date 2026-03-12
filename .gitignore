@@ -23,6 +23,7 @@ ENV/
 *~
 
 # Project specific - ignore all data files (keep only .gitkeep for structure)
+*.bat
 input/dynamics/*
 !input/dynamics/.gitkeep
 input/redash/*

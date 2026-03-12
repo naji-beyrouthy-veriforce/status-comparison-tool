@@ -20,10 +20,10 @@ import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
 
 # Import configuration and utilities
-from config import INPUT_DIR, OUTPUT_DIR, DYNAMICS_DIR, REDASH_DIR, QUERY_IDS_DIR, D365_FILES, SC_FILES, Messages, setup_logging, get_dated_comparison_dir
+from config import INPUT_DIR, OUTPUT_DIR, DYNAMICS_DIR, REDASH_DIR, QUERY_IDS_DIR, D365_FILES, SC_FILES, REDASH_API_KEY, Messages, setup_logging, get_dated_comparison_dir
 
 # Import main processing functions
-from main import extract_and_save_ids, generate_comparisons
+from main import extract_and_save_ids, generate_comparisons, run_automated_workflow
 
 # Setup logging for GUI
 logger = setup_logging("comparison_tool_gui", console_output=False, file_output=True)
@@ -111,20 +111,15 @@ class ComparisonApp:
         self.notebook.add(self.tab_d365, text="  📁 1. Upload D365 Files  ")
         self.setup_d365_tab()
 
-        # Tab 2: Extract IDs
-        self.tab_extract = ttk.Frame(self.notebook)
-        self.notebook.add(self.tab_extract, text="  🔍 2. Extract IDs  ")
-        self.setup_extract_tab()
+        # Tab 2: Run Automated Comparison
+        self.tab_run = ttk.Frame(self.notebook)
+        self.notebook.add(self.tab_run, text="  🚀 2. Run Comparison  ")
+        self.setup_run_tab()
 
-        # Tab 3: Upload SafeContractor Files
-        self.tab_sc = ttk.Frame(self.notebook)
-        self.notebook.add(self.tab_sc, text="  📊 3. Upload SC Files  ")
-        self.setup_sc_tab()
-
-        # Tab 4: Generate Comparisons
-        self.tab_compare = ttk.Frame(self.notebook)
-        self.notebook.add(self.tab_compare, text="  🚀 4. Generate Reports  ")
-        self.setup_compare_tab()
+        # Tab 3: Results & Email Report
+        self.tab_results = ttk.Frame(self.notebook)
+        self.notebook.add(self.tab_results, text="  📊 3. Results  ")
+        self.setup_results_tab()
 
         # Modern status bar with indicator
         status_frame = tk.Frame(self.root, bg=self.colors['bg_card'], height=40)
@@ -249,17 +244,17 @@ class ComparisonApp:
         )
         self.btn_process_d365.pack()
         
-        ToolTip(self.btn_process_d365, text="Save uploaded D365 files and proceed to ID extraction", bootstyle="primary")
+        ToolTip(self.btn_process_d365, text="Save uploaded D365 files and proceed to comparison", bootstyle="primary")
 
-    def setup_extract_tab(self):
-        """Setup ID extraction tab"""
+    def setup_run_tab(self):
+        """Setup automated comparison tab — one button does everything"""
         # Info card
-        info_frame = tk.Frame(self.tab_extract, bg=self.colors['bg_card'], relief=tk.SOLID, bd=1)
+        info_frame = tk.Frame(self.tab_run, bg=self.colors['bg_card'], relief=tk.SOLID, bd=1)
         info_frame.pack(fill=tk.X, padx=20, pady=20)
 
         tk.Label(
             info_frame,
-            text="🔍 Extract IDs for Redash Queries",
+            text="🚀 Run Automated Comparison",
             font=("Segoe UI", 14, "bold"),
             bg=self.colors['bg_card'],
             fg=self.colors['accent_orange'],
@@ -267,46 +262,56 @@ class ComparisonApp:
 
         tk.Label(
             info_frame,
-            text="Extract and format Global Alcumus IDs from D365 files. The formatted IDs will be ready to copy into Redash queries.",
+            text="One click does everything: Extract IDs → Run Redash queries → Download results → Generate comparisons → Email report.",
             bg=self.colors['bg_card'],
             fg=self.colors['text_secondary'],
             font=("Segoe UI", 10),
-            wraplength=850,
+            wraplength=900,
             justify=tk.LEFT,
-        ).pack(anchor=tk.W, padx=20, pady=(5, 15))
+        ).pack(anchor=tk.W, padx=20, pady=(0, 10))
 
-        # Action button with progress bar
-        btn_frame = ttk.Frame(self.tab_extract)
+        # API key status indicator
+        api_status = "✓ Redash API key configured" if REDASH_API_KEY else "❌ REDASH_API_KEY environment variable not set"
+        api_color = self.colors['accent_green'] if REDASH_API_KEY else "#ef4444"
+        tk.Label(
+            info_frame,
+            text=api_status,
+            bg=self.colors['bg_card'],
+            fg=api_color,
+            font=("Segoe UI", 9),
+        ).pack(anchor=tk.W, padx=20, pady=(0, 15))
+
+        # Action button
+        btn_frame = ttk.Frame(self.tab_run)
         btn_frame.pack(pady=20)
 
-        self.btn_extract = ttk.Button(
+        self.btn_run_auto = ttk.Button(
             btn_frame,
-            text="⚙️ Extract IDs",
-            command=self.extract_ids,
+            text="⚡ Run Full Comparison",
+            command=self.run_automated,
             bootstyle="warning",
             width=35,
         )
-        self.btn_extract.pack()
-        
-        ToolTip(self.btn_extract, text="Extract Global Alcumus IDs from uploaded D365 files", bootstyle="warning")
-        
-        # Progress bar (hidden by default)
-        self.extract_progress = ttk.Progressbar(btn_frame, bootstyle="warning-striped", mode="indeterminate", length=300)
-        # Don't pack it yet, will show when processing
+        self.btn_run_auto.pack()
 
-        # Modern console output
+        ToolTip(self.btn_run_auto, text="Extract IDs, query Redash, and generate comparisons automatically", bootstyle="warning")
+
+        # Progress bar (hidden by default)
+        self.run_progress = ttk.Progressbar(btn_frame, bootstyle="warning-striped", mode="indeterminate", length=300)
+
+        # Console output for real-time progress
         console_label = tk.Label(
-            self.tab_extract, 
-            text="Output:", 
+            self.tab_run,
+            text="Progress:",
             font=("Segoe UI", 10, "bold"),
             bg=self.colors['bg_dark'],
             fg=self.colors['text_primary']
         )
         console_label.pack(anchor=tk.W, padx=20, pady=(20, 5))
 
-        self.extract_console = scrolledtext.ScrolledText(
-            self.tab_extract,
-            height=20,
+        self.run_console = scrolledtext.ScrolledText(
+            self.tab_run,
+            height=28,
             bg="#0d1117",
             fg="#58a6ff",
             font=("Consolas", 9),
@@ -316,118 +321,35 @@ class ComparisonApp:
             relief=tk.SOLID,
             bd=1,
         )
-        self.extract_console.pack(fill=tk.BOTH, expand=True, padx=20, pady=(0, 15))
+        self.run_console.pack(fill=tk.BOTH, expand=True, padx=20, pady=(0, 15))
 
-    def setup_sc_tab(self):
-        """Setup SafeContractor file upload tab"""
+        # Configure text tags
+        self.run_console.tag_config("success", foreground="#10b981")
+        self.run_console.tag_config("error", foreground="#ef4444")
+        self.run_console.tag_config("info", foreground="#60a5fa")
+
+        # Placeholder
+        self.run_console.insert("1.0",
+            "Ready to run automated comparison.\n\n"
+            "Steps that will be performed:\n"
+            "  1. Extract Global Alcumus IDs from D365 files\n"
+            "  2. Inject IDs into Redash queries & execute\n"
+            "  3. Download SafeContractor results\n"
+            "  4. Generate comparison Excel files\n"
+            "  5. Generate email report\n\n"
+            "Click 'Run Full Comparison' to start."
+        )
+        self.run_console.config(state="disabled")
+
+    def setup_results_tab(self):
+        """Setup results & email report tab"""
         # Info card
-        info_frame = tk.Frame(self.tab_sc, bg=self.colors['bg_card'], relief=tk.SOLID, bd=1)
+        info_frame = tk.Frame(self.tab_results, bg=self.colors['bg_card'], relief=tk.SOLID, bd=1)
         info_frame.pack(fill=tk.X, padx=20, pady=20)
 
         tk.Label(
             info_frame,
-            text="📊 Upload SafeContractor (Redash) Exports",
-            font=("Segoe UI", 14, "bold"),
-            bg=self.colors['bg_card'],
-            fg=self.colors['accent_green'],
-        ).pack(anchor=tk.W, padx=20, pady=(15, 5))
-
-        tk.Label(
-            info_frame,
-            text="Drag & drop your SafeContractor files (any combination of Accreditation, WCB, Client). Not all 3 are required.",
-            bg=self.colors['bg_card'],
-            fg=self.colors['text_secondary'],
-            font=("Segoe UI", 10),
-            wraplength=900,
-            justify=tk.LEFT,
-        ).pack(anchor=tk.W, padx=20, pady=(0, 15))
-
-        # Enhanced drop zone
-        multi_drop_frame = ttk.Frame(self.tab_sc, padding=10)
-        multi_drop_frame.pack(fill=tk.X, padx=20, pady=10)
-
-        bulk_drop = tk.Frame(
-            multi_drop_frame, 
-            bg="#1f3a2c", 
-            relief=tk.SOLID, 
-            bd=2,
-            highlightbackground=self.colors['accent_green'],
-            highlightthickness=2,
-            height=110
-        )
-        bulk_drop.pack(fill=tk.X, pady=5)
-        bulk_drop.pack_propagate(False)
-
-        # Configure drag and drop
-        bulk_drop.drop_target_register(DND_FILES)
-        bulk_drop.dnd_bind("<<Drop>>", lambda e: self.handle_bulk_drop(e, "sc"))
-        bulk_drop.dnd_bind("<<DragEnter>>", lambda e, f=bulk_drop: self.on_drag_enter(e, f, "sc"))
-        bulk_drop.dnd_bind("<<DragLeave>>", lambda e, f=bulk_drop: self.on_drag_leave(e, f, "sc"))
-
-        tk.Label(
-            bulk_drop,
-            text="🚀 DRAG & DROP SAFECONTRACTOR FILES HERE\n(Drop one or more files — Accreditation, WCB, and/or Client)",
-            bg="#1f3a2c",
-            fg="#6ee7b7",
-            font=("Segoe UI", 11, "bold"),
-            justify=tk.CENTER,
-        ).pack(expand=True)
-        
-        ToolTip(bulk_drop, text="Drop Excel files from Redash query results", bootstyle="success")
-
-        # Status indicators
-        status_frame = tk.Frame(self.tab_sc, bg=self.colors['bg_card'], bd=1, relief=tk.SOLID)
-        status_frame.pack(fill=tk.X, padx=20, pady=15)
-        
-        tk.Label(
-            status_frame,
-            text="File Upload Status:",
-            font=("Segoe UI", 10, "bold"),
-            bg=self.colors['bg_card'],
-            fg=self.colors['text_primary']
-        ).pack(anchor=tk.W, padx=15, pady=(10, 5))
-        
-        self.sc_status_labels = {}
-        for report_type, display_name in [("accreditation", "Accreditation"), ("wcb", "WCB"), ("client", "Client Specific")]:
-            row = tk.Frame(status_frame, bg=self.colors['bg_card'])
-            row.pack(fill=tk.X, padx=15, pady=3)
-            
-            indicator = tk.Canvas(row, width=10, height=10, bg=self.colors['bg_card'], highlightthickness=0)
-            indicator.pack(side=tk.LEFT, padx=(0, 8))
-            indicator.create_oval(2, 2, 8, 8, fill="#6b7280", outline="")
-            
-            label = tk.Label(row, text=f"{display_name}: Not uploaded", bg=self.colors['bg_card'], fg=self.colors['text_secondary'], font=("Segoe UI", 9))
-            label.pack(side=tk.LEFT)
-            
-            self.sc_status_labels[report_type] = {"indicator": indicator, "label": label}
-        
-        tk.Label(status_frame, text="", bg=self.colors['bg_card']).pack(pady=5)
-
-        # Action button
-        btn_frame = ttk.Frame(self.tab_sc)
-        btn_frame.pack(pady=25)
-
-        self.btn_process_sc = ttk.Button(
-            btn_frame,
-            text="✅ Save SafeContractor Files & Proceed",
-            command=self.save_sc_files,
-            bootstyle="success",
-            width=35,
-            state=tk.DISABLED,
-        )
-        self.btn_process_sc.pack()
-        
-        ToolTip(self.btn_process_sc, text="Save uploaded SC files and proceed to comparison", bootstyle="success")
-
-    def setup_compare_tab(self):
-        """Setup comparison generation tab"""
-        # Info card
-        info_frame = tk.Frame(self.tab_compare, bg=self.colors['bg_card'], relief=tk.SOLID, bd=1)
-        info_frame.pack(fill=tk.X, padx=20, pady=20)
-
-        tk.Label(
-            info_frame,
-            text="📊 Generate Status Comparison Files",
+            text="📊 Results & Email Report",
             font=("Segoe UI", 14, "bold"),
             bg=self.colors['bg_card'],
             fg=self.colors['accent_purple'],
@@ -435,45 +357,36 @@ class ComparisonApp:
 
         tk.Label(
             info_frame,
-            text="Click below to generate the final comparison Excel files with status matching and differences.",
+            text="View comparison results and copy the email report to send to your team.",
             bg=self.colors['bg_card'],
             fg=self.colors['text_secondary'],
             font=("Segoe UI", 10),
             wraplength=850,
             justify=tk.LEFT,
-        ).pack(anchor=tk.W, padx=20, pady=(5, 15))
+        ).pack(anchor=tk.W, padx=20, pady=(0, 15))
 
-        # Action button with progress
-        btn_frame = ttk.Frame(self.tab_compare)
-        btn_frame.pack(pady=20)
+        # Header with copy and open folder buttons
+        output_header_frame = ttk.Frame(self.tab_results)
+        output_header_frame.pack(fill=tk.X, padx=20, pady=(0, 5))
 
-        self.btn_compare = ttk.Button(
-            btn_frame,
-            text="🚀 Generate Comparisons",
-            command=self.generate_comparison,
-            bootstyle="info",
-            width=35,
-        )
-        self.btn_compare.pack()
-        
-        ToolTip(self.btn_compare, text="Generate Excel comparison reports with status analysis", bootstyle="info")
-        
-        # Progress bar (hidden by default)
-        self.compare_progress = ttk.Progressbar(btn_frame, bootstyle="info-striped", mode="indeterminate", length=300)
-
-        # Header with copy button
-        output_header_frame = ttk.Frame(self.tab_compare)
-        output_header_frame.pack(fill=tk.X, padx=20, pady=(20, 5))
-        
         output_label = tk.Label(
-            output_header_frame, 
-            text="📊 Output:", 
+            output_header_frame,
+            text="📧 Email Report:",
             font=("Segoe UI", 10, "bold"),
             bg=self.colors['bg_dark'],
             fg=self.colors['text_primary']
         )
         output_label.pack(side=tk.LEFT)
-        
+
+        self.btn_open_output = ttk.Button(
+            output_header_frame,
+            text="📂 Open Output Folder",
+            command=lambda: self.open_folder(OUTPUT_DIR),
+            bootstyle="info",
+            width=20,
+        )
+        self.btn_open_output.pack(side=tk.RIGHT, padx=(5, 0))
+
         self.btn_copy_report = ttk.Button(
             output_header_frame,
             text="📋 Copy Email Report",
@@ -483,12 +396,12 @@ class ComparisonApp:
             state="disabled"
         )
         self.btn_copy_report.pack(side=tk.RIGHT)
-        
+
         ToolTip(self.btn_copy_report, text="Copy email report to clipboard", bootstyle="success")
 
         # Unified output console
         self.unified_output = scrolledtext.ScrolledText(
-            self.tab_compare,
+            self.tab_results,
             height=28,
             bg="#0d1117",
             fg="#58a6ff",
@@ -500,23 +413,21 @@ class ComparisonApp:
             bd=1,
         )
         self.unified_output.pack(fill=tk.BOTH, expand=True, padx=20, pady=(0, 15))
-        
+
         # Configure text tags for different sections
         self.unified_output.tag_config("header", foreground="#10b981", font=("Consolas", 10, "bold"))
         self.unified_output.tag_config("separator", foreground="#60a5fa")
         self.unified_output.tag_config("email", foreground="#e5e5e5", font=("Consolas", 9))
         self.unified_output.tag_config("success", foreground="#10b981")
         self.unified_output.tag_config("error", foreground="#ef4444")
-        
-        # Add placeholder text
-        placeholder = "Waiting to generate comparisons...\n\n" \
-                     "Click 'Generate Comparisons' to start:\n" \
-                     "  • Generates Excel comparison files\n" \
-                     "  • Creates comparison.zip archive\n" \
-                     "  • Displays email report with statistics"
-        self.unified_output.insert("1.0", placeholder)
+
+        # Placeholder
+        self.unified_output.insert("1.0",
+            "No results yet.\n\n"
+            "Run the comparison from Tab 2, then results will appear here."
+        )
         self.unified_output.config(state="disabled")
-        
+
         # Store email report start position for clipboard copying
         self.email_report_start = None
 
@@ -753,16 +664,13 @@ class ComparisonApp:
 
     def update_file_status(self, report_type, file_type, uploaded):
         """Update file status indicators with colored dots"""
-        print(f"\n=== UPDATE_FILE_STATUS ===")
-        print(f"Report Type: {report_type}")
-        print(f"File Type: {file_type}")
-        print(f"Uploaded: {uploaded}")
+        # Only D365 status labels exist in the new UI (SC is automated)
+        if file_type != "d365":
+            return
         
-        status_dict = self.d365_status_labels if file_type == "d365" else self.sc_status_labels
-        print(f"Status dict keys: {list(status_dict.keys())}")
+        status_dict = self.d365_status_labels
         
         if report_type in status_dict:
-            print(f"  \u2713 Report type found in status dict")
             indicator = status_dict[report_type]["indicator"]
             label = status_dict[report_type]["label"]
             
@@ -771,19 +679,15 @@ class ComparisonApp:
                 indicator.delete("all")
                 indicator.create_oval(2, 2, 8, 8, fill=self.colors['accent_green'], outline="")
                 label.config(text=f"{report_type.replace('_', ' ').title()}: ✓ Uploaded", fg=self.colors['text_primary'])
-                print(f"  Updated to GREEN (uploaded)")
             else:
                 # Gray dot for not uploaded
                 indicator.delete("all")
                 indicator.create_oval(2, 2, 8, 8, fill="#6b7280", outline="")
                 label.config(text=f"{report_type.replace('_', ' ').title()}: Not uploaded", fg=self.colors['text_secondary'])
-                print(f"  Updated to GRAY (not uploaded)")
             
             # Force UI update
             indicator.update_idletasks()
             label.update_idletasks()
-        else:
-            print(f"  \u2717 WARNING: {report_type} NOT FOUND in status dict!")
     
     def update_status_indicator(self, status_type):
         """Update the main status bar indicator dot"""
@@ -799,25 +703,16 @@ class ComparisonApp:
             self.status_indicator.itemconfig(self.status_dot, fill="#6b7280")
 
     def check_upload_status(self):
-        """Check if any files are uploaded and enable buttons"""
-        # Check D365 files - enable button if ANY file is uploaded
+        """Check if any D365 files are uploaded and enable buttons"""
         d365_any = any(
             self.uploaded_files[k] for k in ["accreditation_d365", "wcb_d365", "client_d365"]
         )
         if hasattr(self, "btn_process_d365"):
             self.btn_process_d365.config(state=tk.NORMAL if d365_any else tk.DISABLED)
 
-        # Check SC files - enable button if ANY file is uploaded
-        sc_any = any(
-            self.uploaded_files[k] for k in ["accreditation_sc", "wcb_sc", "client_sc"]
-        )
-        if hasattr(self, "btn_process_sc"):
-            self.btn_process_sc.config(state=tk.NORMAL if sc_any else tk.DISABLED)
-
     def check_existing_files(self):
-        """Check for existing files in input folder and mark as uploaded"""
+        """Check for existing D365 files in input folder and mark as uploaded"""
         DYNAMICS_DIR.mkdir(parents=True, exist_ok=True)
-        REDASH_DIR.mkdir(parents=True, exist_ok=True)
         
         # Check for D365 files in dynamics directory
         for key, filename in D365_FILES.items():
@@ -827,22 +722,13 @@ class ComparisonApp:
                 self.uploaded_files[full_key] = str(file_path)
                 self.update_file_status(key, "d365", True)
         
-        # Check for SC files in redash directory
-        for key, filename in SC_FILES.items():
-            file_path = REDASH_DIR / filename
-            if file_path.exists():
-                full_key = f"{key}_sc"
-                self.uploaded_files[full_key] = str(file_path)
-                self.update_file_status(key, "sc", True)
-        
         # Update button states after checking
         self.check_upload_status()
         
         # Update status bar with detected files
         d365_count = sum(1 for k, v in self.uploaded_files.items() if "_d365" in k and v is not None)
-        sc_count = sum(1 for k, v in self.uploaded_files.items() if "_sc" in k and v is not None)
-        if d365_count > 0 or sc_count > 0:
-            self.status_var.set(f"Loaded {d365_count} D365 file(s) and {sc_count} SC file(s) from disk")
+        if d365_count > 0:
+            self.status_var.set(f"Loaded {d365_count} D365 file(s) from disk")
 
     def cleanup_files(self):
         """Delete all uploaded files from input directories"""
@@ -920,12 +806,11 @@ class ComparisonApp:
             msg = f"{Messages.SUCCESS} Saved {len(saved_files)} D365 file(s): {', '.join(f.title() for f in saved_files)}"
             if skipped_files:
                 msg += f"\n\nSkipped (not uploaded): {', '.join(f.title() for f in skipped_files)}"
-            msg += "\n\nNext step: Go to 'Extract IDs' tab to generate ID lists for Redash."
+            msg += "\n\nNext step: Go to 'Run Comparison' tab to start the automated process."
             messagebox.showinfo("Success", msg)
 
-            # Always go to Extract IDs tab in manual mode
-            self.notebook.select(1)  # Switch to Extract IDs tab
-            self.status_var.set(f"Saved {len(saved_files)} D365 file(s) - Ready to extract IDs")
+            self.notebook.select(1)  # Switch to Run Comparison tab
+            self.status_var.set(f"Saved {len(saved_files)} D365 file(s) - Ready to run comparison")
             self.update_status_indicator("success")
 
         except Exception as e:
@@ -933,151 +818,31 @@ class ComparisonApp:
             messagebox.showerror("Error", f"Failed to save files:\n{e}")
             self.update_status_indicator("error")
 
-    def save_sc_files(self):
-        """Copy uploaded SafeContractor files to input folder (only files that were uploaded)"""
-        try:
-            logger.info("Starting SC file save process")
-            REDASH_DIR.mkdir(parents=True, exist_ok=True)
-            
-            saved_files = []
-            skipped_files = []
-            for key in ["accreditation_sc", "wcb_sc", "client_sc"]:
-                report_type = key.replace("_sc", "")
-                if self.uploaded_files[key]:
-                    source = Path(self.uploaded_files[key])
-
-                    # Validate source exists
-                    if not source.exists():
-                        raise FileNotFoundError(f"Source file not found: {source}")
-
-                    dest = REDASH_DIR / SC_FILES[report_type]
-
-                    # Ensure destination path is valid
-                    dest = dest.resolve()
-
-                    shutil.copy2(str(source), str(dest))
-                    saved_files.append(report_type)
-                    logger.info(f"Saved SC {report_type} file: {source.name} -> {dest.name}")
-                else:
-                    skipped_files.append(report_type)
-            
-            logger.info(f"Successfully saved {len(saved_files)} SC files: {', '.join(saved_files)}")
-            if skipped_files:
-                logger.info(f"Skipped (not uploaded): {', '.join(skipped_files)}")
-            
-            msg = f"{Messages.SUCCESS} Saved {len(saved_files)} SC file(s): {', '.join(f.title() for f in saved_files)}"
-            if skipped_files:
-                msg += f"\n\nSkipped (not uploaded): {', '.join(f.title() for f in skipped_files)}"
-            msg += "\n\nNext step: Go to 'Generate Comparisons' tab to create comparison reports."
-            messagebox.showinfo("Success", msg)
-            self.notebook.select(3)  # Switch to Generate Comparisons tab
-            self.status_var.set(f"Saved {len(saved_files)} SC file(s) - Ready to generate comparisons")
-            self.update_status_indicator("success")
-
-        except Exception as e:
-            logger.exception(f"Failed to save SC files: {str(e)}")
-            messagebox.showerror("Error", f"Failed to save files:\n{e}")
-            self.update_status_indicator("error")
-
-    def extract_ids(self):
-        """Run ID extraction in background thread"""
-        logger.info("Starting ID extraction process")
-        self.btn_extract.config(state=tk.DISABLED, text="⏳ Extracting...")
-        self.extract_console.delete(1.0, tk.END)
-        self.status_var.set("Extracting IDs...")
-        self.update_status_indicator("processing")
-        
-        # Show and start progress bar
-        self.extract_progress.pack(pady=10)
-        self.extract_progress.start()
-
-        def run_extraction():
-            # Redirect stdout to console
-            import io
-            import contextlib
-
-            f = io.StringIO()
-            with contextlib.redirect_stdout(f):
-                try:
-                    extract_and_save_ids()
-                    output = f.getvalue()
-                    logger.info("ID extraction completed successfully")
-                except Exception as e:
-                    logger.exception(f"ID extraction failed: {str(e)}")
-                    output = f"Error: {e}\n{f.getvalue()}"
-
-            # Update UI in main thread
-            self.root.after(0, self.extraction_complete, output)
-
-        thread = threading.Thread(target=run_extraction, daemon=True)
-        thread.start()
-
-    def extraction_complete(self, output):
-        """Handle extraction completion"""
-        self.extract_console.insert(tk.END, output)
-        self.extract_console.see(tk.END)
-        self.btn_extract.config(state=tk.NORMAL, text="⚙️ Extract IDs")
-        
-        # Hide and stop progress bar
-        self.extract_progress.stop()
-        self.extract_progress.pack_forget()
-
-        if "Error" in output or "❌" in output:
-            self.status_var.set("ID extraction failed - Check console for errors")
-            self.update_status_indicator("error")
+    def run_automated(self):
+        """Run the full automated workflow in a background thread"""
+        if not REDASH_API_KEY:
             messagebox.showerror(
-                "Error", "ID extraction failed. Check the console output for details."
+                "API Key Missing",
+                "REDASH_API_KEY environment variable is not set.\n\n"
+                "Set it before launching the app:\n"
+                "  PowerShell: $env:REDASH_API_KEY = 'your-key'\n"
+                "  Or use the Run_GUI.bat launcher which sets it automatically."
             )
-        else:
-            self.status_var.set("IDs extracted successfully!")
-            self.update_status_indicator("success")
-            
-            # Automatically open the query_ids folder
-            self.open_folder(QUERY_IDS_DIR)
-            
-            messagebox.showinfo(
-                "Success",
-                f"{Messages.SUCCESS} IDs extracted successfully!\n\n"
-                "Next steps:\n"
-                "1. Copy IDs from .sql.txt files (folder opened)\n"
-                "2. Run Redash queries with those IDs\n"
-                "3. Upload SC results in the next tab",
-            )
-            self.notebook.select(2)  # Switch to Upload SC tab
-
-    def generate_comparison(self):
-        """Run comparison generation in background thread"""
-        logger.info("Starting comparison generation")
-        # Check if SC files exist
-        from config import SC_PATTERNS, REPORT_TYPES
-        from utils import find_file_by_pattern
-
-        sc_files_exist = any(
-            find_file_by_pattern(REDASH_DIR, SC_PATTERNS[t]) is not None for t in REPORT_TYPES
-        )
-
-        if not sc_files_exist:
-            logger.warning("Comparison generation aborted - SC files missing")
-            messagebox.showerror(
-                "SC Files Missing",
-                "SafeContractor files are not found!\n\n"
-                "Please:\n"
-                "1. Extract IDs from D365 files (Tab 2)\n"
-                "2. Run Redash queries with those IDs\n"
-                "3. Upload the SC files from Redash (Tab 3)\n"
-                "4. Then generate comparisons",
-            )
-            self.status_var.set("SC files missing - Cannot generate comparisons")
             return
 
-        self.btn_compare.config(state=tk.DISABLED, text="⏳ Generating...")
-        self.unified_output.config(state="normal")
-        self.unified_output.delete(1.0, tk.END)
-        self.unified_output.config(state="disabled")
-        self.status_var.set("Generating comparisons...")
+        logger.info("Starting automated workflow from GUI")
+        self.btn_run_auto.config(state=tk.DISABLED, text="⏳ Running...")
+        self.run_console.config(state="normal")
+        self.run_console.delete(1.0, tk.END)
+        self.run_console.config(state="disabled")
+        self.status_var.set("Running automated comparison...")
+        self.update_status_indicator("processing")
 
-        def run_comparison():
-            # Redirect stdout to console with real-time updates
+        # Show and start progress bar
+        self.run_progress.pack(pady=10)
+        self.run_progress.start()
+
+        def run_workflow():
             import sys
             from io import StringIO
 
@@ -1090,7 +855,7 @@ class ComparisonApp:
                 def write(self, text):
                     self.buffer.write(text)
                     if self.console:
-                        self.root.after(0, lambda: self._update_console(text))
+                        self.root.after(0, lambda t=text: self._update_console(t))
 
                 def _update_console(self, text):
                     if self.console:
@@ -1106,60 +871,60 @@ class ComparisonApp:
                 def getvalue(self):
                     return self.buffer.getvalue()
 
-            stream = StreamToConsole(self.unified_output, self.root)
+            stream = StreamToConsole(self.run_console, self.root)
 
             try:
                 old_stdout = sys.stdout
                 sys.stdout = stream
-                generate_comparisons()
+                run_automated_workflow()
                 output = stream.getvalue()
-                logger.info("Comparison generation completed successfully")
+                logger.info("Automated workflow completed successfully")
             except Exception as e:
-                logger.exception(f"Comparison generation failed: {str(e)}")
+                logger.exception(f"Automated workflow failed: {str(e)}")
                 output = f"Error: {e}\n{stream.getvalue()}"
             finally:
                 sys.stdout = old_stdout
 
-            # Update UI in main thread
-            self.root.after(0, self.comparison_complete, output)
+            self.root.after(0, self.run_automated_complete, output)
 
-        thread = threading.Thread(target=run_comparison, daemon=True)
+        thread = threading.Thread(target=run_workflow, daemon=True)
         thread.start()
 
-    def comparison_complete(self, output):
-        """Handle comparison completion"""
-        self.unified_output.config(state="normal")
-        self.unified_output.insert(tk.END, output)
-        self.unified_output.see(tk.END)
-        self.unified_output.config(state="disabled")
-        
-        self.btn_compare.config(state=tk.NORMAL, text="🚀 Generate Comparisons")
-        
-        # Hide and stop progress bar
-        self.compare_progress.stop()
-        self.compare_progress.pack_forget()
+    def run_automated_complete(self, output):
+        """Handle automated workflow completion"""
+        self.btn_run_auto.config(state=tk.NORMAL, text="⚡ Run Full Comparison")
 
-        if "Error" in output or "❌" in output:
-            self.status_var.set("Comparison generation failed - Check output for errors")
+        # Hide and stop progress bar
+        self.run_progress.stop()
+        self.run_progress.pack_forget()
+
+        has_error = "Error" in output or "❌" in output
+        has_success = "AUTOMATED WORKFLOW COMPLETE" in output or "SUCCESS" in output
+
+        if has_error and not has_success:
+            self.status_var.set("Automated comparison failed - Check output for errors")
             self.update_status_indicator("error")
             messagebox.showerror(
-                "Error", "Comparison generation failed. Check the output for details."
+                "Error", "Automated comparison failed. Check the progress output for details."
             )
         else:
-            self.status_var.set("Comparisons generated successfully!")
+            self.status_var.set("Automated comparison completed!")
             self.update_status_indicator("success")
-            
-            # Generate and display email report in the same output area
+
+            # Load and display the email report in Tab 3
             self.auto_generate_email_report()
-            
-            # Automatically open the output folder
+
+            # Switch to results tab
+            self.notebook.select(2)
+
+            # Open output folder
             self.open_folder(OUTPUT_DIR)
-            
+
             messagebox.showinfo(
                 "Success",
-                f"{Messages.SUCCESS} Comparison files generated successfully!\n\n"
-                "The Excel files are ready in the output folder (opened automatically).\n"
-                "Email report displayed below - click 'Copy Email Report' to use it.",
+                f"{Messages.SUCCESS} Automated comparison completed!\n\n"
+                "Comparison Excel files are in the output folder (opened automatically).\n"
+                "Email report is displayed in the Results tab — click 'Copy Email Report' to use it.",
             )
 
     def auto_generate_email_report(self):

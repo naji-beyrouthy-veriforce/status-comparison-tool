@@ -4,6 +4,9 @@ REM This runs the script automatically to detect which step to perform
 
 title D365 vs SafeContractor Status Comparison Tool - Auto Mode
 
+REM Set Redash API key for automated mode
+set REDASH_API_KEY=RpWSRcBbV8IHkvXumk442ttCiU2j9XLSa0niHXRD
+
 echo.
 echo ============================================================
 echo  D365 vs SafeContractor Status Comparison

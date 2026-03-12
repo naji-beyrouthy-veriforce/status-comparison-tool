@@ -10,9 +10,7 @@ import pandas as pd
 import warnings
 import sys
 import time
-import logging
 from datetime import datetime
-from pathlib import Path
 from openpyxl import Workbook
 from openpyxl.utils.dataframe import dataframe_to_rows
 
@@ -28,7 +26,6 @@ warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
 
 # Import configuration
 from config import (
-    INPUT_DIR,
     OUTPUT_DIR,
     DYNAMICS_DIR,
     REDASH_DIR,
@@ -213,17 +210,10 @@ def extract_and_save_ids():
     logger.info("ID extraction completed successfully")
     print("\n" + "=" * 70)
     print("✅ ID EXTRACTION COMPLETED!")
-    print("")
-    print("NEXT STEP (Manual Process):")
-    print("1. Copy IDs from output/query_ids/*.sql.txt files")
-    print("2. Paste into Redash IN (...) clauses")
-    print("3. Download SC results as accreditation_sc.xlsx, wcb_sc.xlsx, client_sc.xlsx")
-    print("4. Place SafeContractor (Redash) files in input/redash/ folder")
-    print("5. Run this script again to generate comparisons")
     print("=" * 70 + "\n")
 
 
-def create_comparison_excel(report_type, df_d365, df_sc, include_qual_url=False):
+def create_comparison_excel(report_type, df_d365, df_sc):
     """
     Create comparison Excel file with SC and D365 sheets.
     
@@ -249,7 +239,6 @@ def create_comparison_excel(report_type, df_d365, df_sc, include_qual_url=False)
         report_type: Type of report (accreditation, wcb, or client)
         df_d365: Dynamics 365 DataFrame
         df_sc: SafeContractor DataFrame
-        include_qual_url: Whether to include qualification URL (for WCB)
 
     Returns:
         Path to created Excel file, or None if creation failed
@@ -267,11 +256,6 @@ def create_comparison_excel(report_type, df_d365, df_sc, include_qual_url=False)
     # Find D365 columns using helper function
     id_col_d365 = find_column_by_keywords(df_d365.columns, ("global", "alcumus", "id"))
     status_col_d365 = find_column_by_keywords(df_d365.columns, ("status", "reason"))
-    qual_url_col = (
-        find_column_by_keywords(df_d365.columns, ("qualification", "url"))
-        if include_qual_url
-        else None
-    )
 
     if not id_col_d365 or not status_col_d365:
         logger.error(f"Missing required D365 columns - ID: {id_col_d365}, Status: {status_col_d365}")
@@ -458,7 +442,6 @@ def create_comparison_excel(report_type, df_d365, df_sc, include_qual_url=False)
     # Cache column letters for better performance
     d365_status_col_letter = ws_d365.cell(1, d365_status_col_idx).column_letter
     sc_status_lookup_col_letter = ws_d365.cell(1, sc_status_col_idx).column_letter
-    is_same_col_letter = ws_d365.cell(1, is_same_col_idx).column_letter
 
     for row_idx in range(2, len(df_d365) + 2):
         # XLOOKUP with _xlfn prefix and entire column references
@@ -474,13 +457,11 @@ def create_comparison_excel(report_type, df_d365, df_sc, include_qual_url=False)
         )
 
     # Add XLOOKUP formulas for SC sheet (row 2 onwards)
-    d365_status_col_letter_ref = ws_d365.cell(1, d365_status_col_idx).column_letter
     d365_lookup_col_letter = ws_sc.cell(1, insert_after_idx + 1).column_letter
-    is_same_col_letter_sc = ws_sc.cell(1, insert_after_idx + 2).column_letter
 
     for row_idx in range(2, len(df_sc) + 2):
         # XLOOKUP with _xlfn prefix and entire column references
-        xlookup_formula = f'=_xlfn.XLOOKUP({sc_id_col_letter}{row_idx},D365!{d365_id_col_letter}:{d365_id_col_letter},D365!{d365_status_col_letter_ref}:{d365_status_col_letter_ref},"Not found",0)'
+        xlookup_formula = f'=_xlfn.XLOOKUP({sc_id_col_letter}{row_idx},D365!{d365_id_col_letter}:{d365_id_col_letter},D365!{d365_status_col_letter}:{d365_status_col_letter},"Not found",0)'
         ws_sc.cell(row_idx, insert_after_idx + 1, xlookup_formula)
 
         # Is it the same? formula - compares appropriate status column
@@ -663,9 +644,8 @@ def generate_comparisons():
             continue
 
         try:
-            # Create comparison (include Qualification URL for WCB)
-            include_qual_url = report_type == "wcb"
-            output_file = create_comparison_excel(report_type, df_d365, df_sc, include_qual_url)
+            # Create comparison
+            output_file = create_comparison_excel(report_type, df_d365, df_sc)
 
             if output_file:
                 logger.info(f"Successfully created comparison file: {output_file.name}")
@@ -678,9 +658,6 @@ def generate_comparisons():
         except Exception as e:
             logger.exception(f"Error processing {report_type}: {str(e)}")
             print(f"{Messages.ERROR} Error processing {report_type}: {e}")
-            import traceback
-
-            traceback.print_exc()
             continue
 
     logger.info(f"Comparison generation completed: {success_count} files created")

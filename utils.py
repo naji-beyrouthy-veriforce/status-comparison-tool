@@ -12,6 +12,7 @@ from config import (
     HEADER_FILL,
     HEADER_FONT,
     HIGHLIGHT_HEADERS,
+    CLIENT_STATUS_COLUMN,
 )
 
 
@@ -362,8 +363,6 @@ def validate_uuid_data(df, id_column, file_name):
     Returns:
         tuple: (is_valid: bool, error_message: str, suggested_fix: str, stats: dict)
     """
-    from config import UUID_PATTERN
-
     total_rows = len(df)
     null_count = df[id_column].isna().sum()
     non_null = df[id_column].notna().sum()
@@ -468,8 +467,6 @@ def find_sc_status_column(df_sc, id_col_sc, report_type):
         >>> status_col = find_sc_status_column(df_sc, 'Global Alcumus ID', 'client')
         >>> # Returns 'case' for client reports
     """
-    from config import CLIENT_STATUS_COLUMN
-    
     status_col_sc = None
     
     if report_type.lower() == "client":

@@ -13,7 +13,6 @@ Never modifies saved Redash queries — read-only API key is sufficient.
 
 import re
 import time
-import logging
 import requests
 import pandas as pd
 from io import StringIO

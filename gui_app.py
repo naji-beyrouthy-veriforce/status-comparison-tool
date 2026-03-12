@@ -10,7 +10,6 @@ from ttkbootstrap.constants import *
 from ttkbootstrap.widgets import ToolTip
 from tkinterdnd2 import DND_FILES, TkinterDnD
 import threading
-import logging
 from pathlib import Path
 import shutil
 import sys
@@ -20,7 +19,7 @@ import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
 
 # Import configuration and utilities
-from config import INPUT_DIR, OUTPUT_DIR, DYNAMICS_DIR, REDASH_DIR, QUERY_IDS_DIR, D365_FILES, SC_FILES, REDASH_API_KEY, Messages, setup_logging, get_dated_comparison_dir
+from config import INPUT_DIR, OUTPUT_DIR, DYNAMICS_DIR, REDASH_DIR, QUERY_IDS_DIR, D365_FILES, SC_FILES, REDASH_API_KEY, D365_PATTERNS, SC_PATTERNS, ALLOWED_FILE_EXTENSIONS, Messages, setup_logging, get_dated_comparison_dir
 
 # Import main processing functions
 from main import extract_and_save_ids, generate_comparisons, run_automated_workflow
@@ -32,9 +31,6 @@ logger = setup_logging("comparison_tool_gui", console_output=False, file_output=
 class ComparisonApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("D365 vs SafeContractor - Status Comparison Tool")
-        self.root.geometry("1100x850")
-        self.root.resizable(True, True)
         
         logger.info("GUI Application started")
         
@@ -57,9 +53,6 @@ class ComparisonApp:
             "accreditation_d365": None,
             "wcb_d365": None,
             "client_d365": None,
-            "accreditation_sc": None,
-            "wcb_sc": None,
-            "client_sc": None,
         }
 
         self.setup_ui()
@@ -436,8 +429,6 @@ class ComparisonApp:
         Automatically classify a file based on its name
         Returns the key (e.g., 'accreditation_d365') or None if can't classify
         """
-        from main import D365_PATTERNS, SC_PATTERNS
-
         filename_lower = Path(file_path).name.lower()
         patterns = D365_PATTERNS if file_type_suffix == "d365" else SC_PATTERNS
 
@@ -470,7 +461,7 @@ class ComparisonApp:
             # Classify each file
             for file_path in file_paths:
                 # Validate file type
-                if not file_path.lower().endswith((".xlsx", ".xls", ".csv")):
+                if Path(file_path).suffix.lower() not in ALLOWED_FILE_EXTENSIONS:
                     continue
 
                 # Try to classify
@@ -597,70 +588,13 @@ class ComparisonApp:
         
         return file_paths
 
-    def handle_drop(self, event, file_key):
-        """Handle file drop event"""
-        try:
-            # Get the dropped file path (tkinterdnd2 returns paths in curly braces)
-            file_path = event.data.strip()
-
-            # Remove curly braces if present
-            if file_path.startswith("{") and file_path.endswith("}"):
-                file_path = file_path[1:-1]
-
-            # Handle multiple files (take first one)
-            if " " in file_path and not Path(file_path).exists():
-                # Might be multiple files, take the first valid path
-                possible_paths = file_path.split("} {")
-                for p in possible_paths:
-                    p = p.strip("{}")
-                    if Path(p).exists():
-                        file_path = p
-                        break
-
-            # Validate file exists and type
-            if not Path(file_path).exists():
-                logger.warning(f"Dropped file not found: {file_path}")
-                messagebox.showerror("Error", f"Could not find file: {file_path}")
-                return
-
-            if not file_path.lower().endswith((".xlsx", ".xls", ".csv")):
-                logger.warning(f"Invalid file type dropped: {file_path}")
-                messagebox.showerror(
-                    "Error", "Please drop an Excel file (.xlsx, .xls, or .csv)"
-                )
-                return
-
-            # Store the file
-            self.uploaded_files[file_key] = file_path
-            filename = Path(file_path).name
-            logger.info(f"File dropped and stored: {filename} as {file_key}")
-
-            # Check if we can enable process buttons
-            self.check_upload_status()
-            self.status_var.set(f"Dropped: {filename}")
-
-        except Exception as e:
-            logger.exception(f"Error processing dropped file: {str(e)}")
-            import traceback
-
-            traceback.print_exc()
-            messagebox.showerror("Error", f"Error processing dropped file: {e}")
-
     def on_drag_enter(self, event, frame, file_type):
-        """Visual feedback when dragging over drop zone - smooth animation"""
-        current_bg = str(frame["bg"])
-        
-        if file_type == "d365":
-            frame.config(bg="#3b5a7f")  # Brighter blue on hover
-        elif file_type == "sc":
-            frame.config(bg="#2d5a43")  # Brighter green on hover
+        """Visual feedback when dragging over drop zone"""
+        frame.config(bg="#3b5a7f")
 
     def on_drag_leave(self, event, frame, file_type):
         """Reset visual when leaving drop zone"""
-        if file_type == "d365":
-            frame.config(bg="#2a3f5f")  # Original D365 blue
-        elif file_type == "sc":
-            frame.config(bg="#1f3a2c")  # Original SC green
+        frame.config(bg="#2a3f5f")
 
     def update_file_status(self, report_type, file_type, uploaded):
         """Update file status indicators with colored dots"""

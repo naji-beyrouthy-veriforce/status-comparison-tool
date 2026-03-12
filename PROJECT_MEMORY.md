@@ -1,11 +1,50 @@
 # Project Memory - Status Comparison Tool
-**Last Updated:** February 24, 2026  
-**Status:** Fully Functional - Manual Workflow  
+**Last Updated:** March 12, 2026  
+**Status:** Fully Functional - Automated Redash Integration  
 **Code Quality:** Technical Debt Resolved
 
 ---
 
 ## Recent Critical Updates
+
+### Mar 12, 2026 - Redash Automation (One-Click Pipeline)
+**Change:** Fully automated Redash query execution — eliminated all manual copy/paste steps
+
+**What was automated:**
+- Extracting IDs from D365 files
+- Injecting IDs into Redash queries (accreditation/WCB)
+- Executing queries via Redash API
+- Downloading results as Excel files
+- Generating comparisons and email report
+
+**Technical approach:**
+- New `redash_api.py` module: executes raw SQL via `POST /api/query_results`
+- Uses `data_source_id` + full SQL text — never modifies saved Redash queries
+- Read-only API key is sufficient (no write permissions needed)
+- Fetches saved query as SQL template → injects IDs locally → executes directly
+- Client query (1277) executes as-is with no ID injection
+- Polls `/api/jobs/{job_id}` for async query completion
+
+**GUI restructured:** 4 tabs → 3 tabs
+- Tab 1: Upload D365 Files (unchanged)
+- Tab 2: Run Comparison (single "Run Full Comparison" button, shows API key status)
+- Tab 3: Results & Email Report (email display + copy + open folder)
+- Removed: manual Extract IDs tab, manual SC Upload tab
+
+**Config changes:**
+- `REDASH_BASE_URL = "https://redash.cognibox.net"`
+- `REDASH_API_KEY` sourced from `REDASH_API_KEY` environment variable
+- `REDASH_QUERY_IDS = {"accreditation": 1266, "wcb": 1281, "client": 1277}`
+- `REDASH_POLL_INTERVAL = 3`, `REDASH_POLL_TIMEOUT = 300`
+
+**Pipeline flow:** `run_automated_workflow()` in main.py orchestrates:
+1. `extract_and_save_ids()` — extract IDs from D365 files
+2. `run_all_redash_queries()` — execute Redash queries & download SC files
+3. `generate_comparisons()` — create Excel comparisons + email report
+
+**Security:** API key stored in environment variable, batch files set it at runtime, `*.bat` added to `.gitignore`
+
+**Initial 403/500 errors resolved:** Original approach tried to modify saved queries (403 forbidden — API key lacked write permission; 500 server error — 71K IDs too large for query update payload). Fixed by switching to direct SQL execution via `/api/query_results` endpoint.
 
 ### Feb 24, 2026 - Partial File Support
 - **Change:** Not all 3 report types (Accreditation, WCB, Client) are required to run
@@ -70,7 +109,7 @@ Compare status records between Dynamics 365 (D365) and SafeContractor (SC) for t
 **Key Components:**
 - `main.py` - Creates Excel files with XLOOKUP formulas
 - `generate_email_report.py` - Replicates formulas to generate reports
-- `gui_app.py` - 4-tab manual workflow interface
+- `gui_app.py` - 3-tab automated workflow interface
 - `config.py` - All constants, patterns, Messages class
 - `utils.py` - Reusable utilities
 
@@ -86,31 +125,27 @@ Compare status records between Dynamics 365 (D365) and SafeContractor (SC) for t
 
 **Action:** Drag & drop → System auto-detects by filename → Saves to `input/dynamics/`
 
-### Step 2: Extract IDs (Tab 2)
-**Function:** `extract_and_save_ids()`
+### Steps 2-4: Automated Pipeline (Tab 2 — "Run Full Comparison")
+**Function:** `run_automated_workflow()` → calls 3 sub-steps automatically
 
-**Process:**
+**Step 2a — Extract IDs:** `extract_and_save_ids()`
 1. Reads D365 files (WCB & Accreditation only; Client uses direct comparison)
 2. Finds ID column: keywords `["global", "alcumus", "id"]`
 3. Extracts UUIDs: `[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}`
 4. Cleans IDs (lowercase, trim, deduplicate)
 5. Formats SQL: `'uuid1',\n'uuid2',\n'uuid3'` (no trailing comma)
+6. Saves to `output/query_ids/{wcb,accreditation}_ids.sql.txt`
 
-**Output:** `output/query_ids/{wcb,accreditation}_ids.sql.txt`
+**Step 2b — Redash Queries (Automated):** `run_all_redash_queries()`
+1. Verifies Redash API connection (requires VPN)
+2. For accreditation/WCB: fetches saved query SQL → injects extracted IDs → executes via `/api/query_results`
+3. For client: fetches saved query SQL → executes as-is (NO modification)
+4. Polls job status until completion
+5. Downloads results as CSV → converts to Excel → saves to `input/redash/`
 
-### Step 3: Manual Redash Process ⚠️ REQUIRED
-**User Actions:**
-1. Open Redash queries (IDs: Client=1277, WCB=1281, Accreditation=1266)
-2. Copy IDs from `.sql.txt` files
-3. Paste into `WHERE global_alcumus_id IN (...)` clause
-4. Execute query & download Excel
-5. Upload to GUI Tab 3
+**Step 2c — Generate Comparisons:** `generate_comparisons()` + `generate_email_report()`
 
-**Output:** SC files in `input/redash/`
-
-**Why Manual:** Redash API has URI length limits (414 error) for large ID lists
-
-### Step 4: Generate Comparisons (Tab 4)
+### Step 3: Generate Comparisons (auto-triggered)
 **Function:** `generate_comparisons()` + `generate_email_report()`
 
 **Process:**
@@ -223,6 +258,7 @@ status_breakdown = not_found_df['Status Reason'].value_counts()
 - `extract_and_save_ids()` - Extracts IDs from D365 files (WCB/Accreditation only)
 - `create_comparison_excel()` - Generates 2-sheet workbooks with XLOOKUP formulas
 - `generate_comparisons()` - Orchestrates all comparisons
+- `run_automated_workflow()` - Full pipeline: extract IDs → Redash queries → comparisons
 
 ### generate_email_report.py
 - `analyze_sc_sheet()` - Replicates SC sheet XLOOKUP & comparison (with correct column detection)
@@ -238,11 +274,23 @@ status_breakdown = not_found_df['Status Reason'].value_counts()
 - `safe_read_excel()` - Robust Excel reading
 - `apply_header_formatting()` - Excel header styling (red fill)
 
+### redash_api.py
+- `verify_connection()` - Tests Redash API connectivity and auth
+- `get_query()` - Fetches saved query (SQL template + data_source_id)
+- `execute_raw_sql()` - Executes SQL via `/api/query_results` (read-only, never modifies saved queries)
+- `_poll_job()` - Polls async Redash job until completion or timeout
+- `download_result_by_id()` - Downloads query results as DataFrame by result ID
+- `inject_ids_into_sql()` - Regex-replaces IDs in `global_alcumus_id IN (...)` clause
+- `read_ids_from_file()` - Reads extracted `.sql.txt` ID files
+- `run_redash_query()` - Full flow for one query (fetch → inject → execute → download → save)
+- `run_all_redash_queries()` - Orchestrates all 3 queries with error handling
+
 ### gui_app.py
-- `setup_*_tab()` - Creates 4 tab interfaces
+- `setup_upload_tab()` - Tab 1: D365 file upload with drag & drop
+- `setup_run_tab()` - Tab 2: One-click "Run Full Comparison" with API key status
+- `setup_results_tab()` - Tab 3: Email report display, copy, open folder
 - `handle_bulk_drop()` - Multi-file drag & drop processing
-- `generate_comparison()` - Runs comparison in background thread
-- `auto_generate_email_report()` - Auto-generates email after comparisons
+- `run_automated()` / `run_automated_complete()` - Background automated pipeline
 - `copy_email_to_clipboard()` - Smart clipboard (email portion only)
 
 ### config.py
@@ -277,8 +325,12 @@ UUID_PATTERN = r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-
 HIGHLIGHT_HEADERS = ['global_alcumus_id', 'status', 'd365 status', 'sc status', 
                      'is it the same?', 'status reason', 'case']
 
-# Redash Query IDs (Reference)
-QUERY_IDS = {"accreditation": 1266, "wcb": 1281, "client": 1277}
+# Redash Configuration
+REDASH_BASE_URL = "https://redash.cognibox.net"
+REDASH_API_KEY = os.environ.get("REDASH_API_KEY")  # Set via env var or batch file
+REDASH_QUERY_IDS = {"accreditation": 1266, "wcb": 1281, "client": 1277}
+REDASH_POLL_INTERVAL = 3   # seconds between job status checks
+REDASH_POLL_TIMEOUT = 300  # max seconds to wait for query completion
 ```
 
 ---
@@ -303,9 +355,11 @@ QUERY_IDS = {"accreditation": 1266, "wcb": 1281, "client": 1277}
 **Why:** Bidirectional comparison (SC→D365 and D365→SC perspectives)  
 **Benefit:** Comprehensive analysis from both systems
 
-### 5. Manual Redash Execution
-**Why:** API URI length limits (414 error) for large datasets  
-**Alternative:** Considered API automation (removed due to limitations)
+### 5. Automated Redash via Direct SQL Execution
+**Why:** Manual copy/paste of IDs was error-prone and time-consuming  
+**How:** Execute raw SQL via `POST /api/query_results` with `data_source_id` + full SQL text  
+**Benefit:** One-click pipeline, read-only API key sufficient, no saved queries modified  
+**History:** Initial attempt to modify saved queries failed (403/500 errors). Direct SQL execution bypasses all limitations.
 
 ### 6. Flexible Pattern Matching
 **Why:** D365/SC exports have inconsistent naming across time periods  
@@ -330,11 +384,11 @@ QUERY_IDS = {"accreditation": 1266, "wcb": 1281, "client": 1277}
 
 ```
 D365 Excel → [Tab 1 Upload] → input/dynamics/
-           → [Tab 2 Extract] → output/query_ids/*.sql.txt
-           → [Manual Redash] → SC Excel
-           → [Tab 3 Upload] → input/redash/
-           → [Tab 4 Generate] → output/comparison_YYYY-MM-DD/*.xlsx
-           → [Email Report] → output/email_report.txt + GUI display
+           → [Tab 2 Run] → extract_and_save_ids() → output/query_ids/*.sql.txt
+                          → run_all_redash_queries() → input/redash/*.xlsx
+                          → generate_comparisons() → output/comparison_YYYY-MM-DD/*.xlsx
+                          → generate_email_report() → output/email_report.txt
+           → [Tab 3 Results] → Email report display + clipboard copy
 ```
 
 ---
@@ -343,13 +397,15 @@ D365 Excel → [Tab 1 Upload] → input/dynamics/
 
 ```
 status_comparaison_tool/
-├── main.py                   # Core logic
+├── main.py                   # Core logic + automated workflow orchestration
+├── redash_api.py             # Redash API integration (query execution & download)
 ├── generate_email_report.py  # Email report generator
-├── config.py                 # Constants, Messages class
+├── config.py                 # Constants, Messages class, Redash config
 ├── utils.py                  # Reusable utilities
-├── gui_app.py                # 4-tab GUI
-├── requirements.txt          # pandas, openpyxl, tkinterdnd2
-├── Run_*.bat                 # Launch scripts
+├── gui_app.py                # 3-tab GUI (Upload, Run, Results)
+├── requirements.txt          # pandas, openpyxl, requests, tkinterdnd2
+├── Run_*.bat                 # Launch scripts (set REDASH_API_KEY env var)
+├── .gitignore                # Excludes *.bat (API key protection)
 ├── README.md                 # User docs
 ├── PROJECT_MEMORY.md         # This file
 ├── logs/                     # Auto-rotating logs (git-ignored)
@@ -414,34 +470,38 @@ Edit `HEADER_FILL`, `HEADER_FONT`, `HIGHLIGHT_HEADERS` in config.py
 
 ```bash
 Run_GUI.bat
-# Tab 1: Upload 3 D365 files
-# Tab 2: Extract IDs → copy to Redash
-# Tab 3: Upload 3 SC files
-# Tab 4: Generate comparisons → email report auto-displays
+# Tab 1: Upload D365 files (drag & drop)
+# Tab 2: Click "Run Full Comparison" (extracts IDs → runs Redash → generates comparisons)
+# Tab 3: View email report → copy to clipboard
 ```
+**Requirements:** VPN connected (for Redash access), `REDASH_API_KEY` env var set (batch files handle this)
 
 ---
 
 ## Success Checklist
 
-- [ ] All 4 tabs visible/functional
+- [ ] All 3 tabs visible/functional
 - [ ] File uploads show ✓ checkmarks
-- [ ] ID extraction creates `.sql.txt` files
-- [ ] SC upload shows success
+- [ ] API key status shows "API Key: Configured" on Tab 2
+- [ ] VPN connected (Redash reachable)
+- [ ] "Run Full Comparison" completes all 3 steps
+- [ ] Redash queries execute and download successfully (3/3)
 - [ ] Comparison creates 3 Excel files
 - [ ] Each Excel has 2 sheets
 - [ ] "Is it the same?" column shows matches
 - [ ] Red headers applied
-- [ ] Email report displays in unified output
+- [ ] Email report displays on Tab 3
 - [ ] No Python errors
 
 ---
 
 ## Security
 
-- No API keys in code
+- Redash API key stored in environment variable (`REDASH_API_KEY`), never hardcoded
+- Batch files that set the API key are excluded from git (`*.bat` in `.gitignore`)
 - No personal data stored (only UUIDs)
 - Local processing only
+- Saved Redash queries never modified (read-only API approach)
 - Input files not modified
 - Logs git-ignored
 

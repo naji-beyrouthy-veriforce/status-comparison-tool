@@ -41,6 +41,7 @@ from config import (
     MAX_FILE_SAVE_RETRIES,
     FILE_SAVE_RETRY_DELAY_SECONDS,
     CLIENT_STATUS_COLUMN,
+    REDASH_API_KEY,
     Messages,
     setup_logging,
     get_dated_comparison_dir,
@@ -70,6 +71,13 @@ try:
 except ImportError:
     logger.warning("Could not import email report generator")
     generate_report = None
+
+# Import Redash API (optional - only needed for automated mode)
+try:
+    from redash_api import run_all_redash_queries
+except ImportError:
+    logger.warning("Could not import Redash API module")
+    run_all_redash_queries = None
 
 
 def extract_and_save_ids():
@@ -707,27 +715,92 @@ def generate_comparisons():
     print("=" * 70 + "\n")
 
 
-def main():
+def run_automated_workflow():
     """
-    Main execution flow - Manual workflow (3 steps)
+    Automated workflow: Extract IDs → Redash queries → Generate comparisons.
+    All steps run automatically — no manual Redash intervention needed.
+    
+    Requires REDASH_API_KEY environment variable to be set.
     """
-    logger.info("Starting Status Comparison Tool - Manual Workflow Mode")
+    logger.info("Starting Automated Workflow")
     print("\n" + "=" * 70)
-    print("DYNAMICS 365 vs SAFECONTRACTOR STATUS COMPARISON")
-    print("Manual Workflow Mode")
+    print("AUTOMATED WORKFLOW: D365 vs SafeContractor Comparison")
     print("=" * 70)
 
-    # Check if any SC files exist (determines which step to run)
-    sc_files_exist = any(
-        find_file_by_pattern(REDASH_DIR, SC_PATTERNS[t]) is not None for t in REPORT_TYPES
-    )
+    # Step 1: Extract IDs from D365 files (existing function)
+    print("\n📋 STEP 1/3: Extracting IDs from D365 files...")
+    extract_and_save_ids()
 
-    if sc_files_exist:
-        print(f"\n{Messages.ALL_FILES_FOUND}")
-        generate_comparisons()
+    # Step 2: Run Redash queries automatically (new)
+    print("\n📡 STEP 2/3: Running Redash queries...")
+    try:
+        redash_results = run_all_redash_queries()
+    except Exception as e:
+        logger.error(f"Redash automation failed: {e}")
+        print(f"\n{Messages.ERROR} Redash automation failed: {e}")
+        print("\nFalling back to manual workflow:")
+        print("1. Copy IDs from output/query_ids/*.sql.txt files")
+        print("2. Paste into Redash queries and execute")
+        print("3. Download results and place in input/redash/")
+        print("4. Run this script again")
+        return
+
+    if not redash_results:
+        print(f"\n{Messages.ERROR} No Redash results downloaded. Cannot proceed.")
+        return
+
+    # Step 3: Generate comparisons (existing function)
+    print("\n📊 STEP 3/3: Generating comparison files...")
+    generate_comparisons()
+
+    print("\n" + "=" * 70)
+    print("✅ AUTOMATED WORKFLOW COMPLETE!")
+    print("=" * 70 + "\n")
+
+
+def main():
+    """
+    Main execution flow.
+    - If REDASH_API_KEY is set → automated mode (extract → Redash → compare)
+    - Otherwise → manual workflow (existing 3-step process)
+    """
+    if REDASH_API_KEY and run_all_redash_queries:
+        # Automated mode
+        logger.info("Starting Status Comparison Tool - Automated Mode")
+        print("\n" + "=" * 70)
+        print("DYNAMICS 365 vs SAFECONTRACTOR STATUS COMPARISON")
+        print("Automated Mode (Redash API)")
+        print("=" * 70)
+
+        # Check if D365 files exist
+        d365_files_exist = any(
+            find_file_by_pattern(DYNAMICS_DIR, D365_PATTERNS[t]) is not None
+            for t in REPORT_TYPES
+        )
+
+        if d365_files_exist:
+            run_automated_workflow()
+        else:
+            print(f"\n{Messages.WARNING} No D365 files found in input/dynamics/")
+            print("Upload D365 files first, then run again.")
     else:
-        print(f"\n{Messages.WARNING} SC files not found - Starting with ID extraction...")
-        extract_and_save_ids()
+        # Manual mode (original behavior)
+        logger.info("Starting Status Comparison Tool - Manual Workflow Mode")
+        print("\n" + "=" * 70)
+        print("DYNAMICS 365 vs SAFECONTRACTOR STATUS COMPARISON")
+        print("Manual Workflow Mode")
+        print("=" * 70)
+
+        sc_files_exist = any(
+            find_file_by_pattern(REDASH_DIR, SC_PATTERNS[t]) is not None for t in REPORT_TYPES
+        )
+
+        if sc_files_exist:
+            print(f"\n{Messages.ALL_FILES_FOUND}")
+            generate_comparisons()
+        else:
+            print(f"\n{Messages.WARNING} SC files not found - Starting with ID extraction...")
+            extract_and_save_ids()
 
 
 if __name__ == "__main__":

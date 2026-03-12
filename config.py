@@ -4,6 +4,7 @@ Centralizes all constants, patterns, and configuration settings
 """
 
 from pathlib import Path
+import os
 import re
 import logging
 from logging.handlers import RotatingFileHandler
@@ -122,6 +123,22 @@ REPORT_TYPES = ["accreditation", "wcb", "client"]
 # ============================================================================
 
 CLIENT_STATUS_COLUMN = "case"  # The status column name for client reports
+
+# ============================================================================
+# REDASH API CONFIGURATION
+# ============================================================================
+REDASH_BASE_URL = "https://redash.cognibox.net"
+REDASH_API_KEY = os.environ.get("REDASH_API_KEY", "")
+
+REDASH_QUERY_IDS = {
+    "accreditation": 1266,
+    "wcb": 1281,
+    "client": 1277,
+}
+
+# Polling settings for query execution
+REDASH_POLL_INTERVAL = 3    # seconds between status checks
+REDASH_POLL_TIMEOUT = 300   # 5 minutes max wait
 
 # ============================================================================
 # LOGGING CONFIGURATION

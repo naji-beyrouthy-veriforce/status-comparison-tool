@@ -5,7 +5,7 @@ Reusable helper functions for file handling, data cleaning, and validation
 
 import pandas as pd
 from pathlib import Path
-from config import (
+from .config import (
     UUID_PATTERN,
     ALLOWED_FILE_EXTENSIONS,
     MIN_FILE_SIZE_BYTES,

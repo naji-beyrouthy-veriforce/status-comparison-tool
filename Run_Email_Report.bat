@@ -7,7 +7,7 @@ echo ===============================================
 echo.
 
 REM Run the email report generator
-python generate_email_report.py
+python -m src.email_report
 
 echo.
 echo ===============================================

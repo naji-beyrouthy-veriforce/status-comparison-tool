@@ -16,10 +16,10 @@ import sys
 from datetime import datetime
 
 # Import configuration
-from config import OUTPUT_DIR, setup_logging, get_dated_comparison_dir
+from .config import OUTPUT_DIR, setup_logging, get_dated_comparison_dir
 
 # Import utilities  
-from utils import find_sc_status_column, find_column_by_keywords
+from .utils import find_sc_status_column, find_column_by_keywords
 
 # Setup logging
 logger = setup_logging("email_report", console_output=True, file_output=True)

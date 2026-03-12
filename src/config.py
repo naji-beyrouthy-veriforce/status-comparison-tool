@@ -14,7 +14,7 @@ from openpyxl.styles import Font, PatternFill
 # ============================================================================
 # DIRECTORY PATHS
 # ============================================================================
-BASE_DIR = Path(__file__).parent
+BASE_DIR = Path(__file__).parent.parent
 INPUT_DIR = BASE_DIR / "input"
 OUTPUT_DIR = BASE_DIR / "output"
 DYNAMICS_DIR = INPUT_DIR / "dynamics"

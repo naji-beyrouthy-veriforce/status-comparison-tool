@@ -17,7 +17,7 @@ import requests
 import pandas as pd
 from io import StringIO
 
-from config import (
+from .config import (
     REDASH_BASE_URL,
     REDASH_API_KEY,
     REDASH_QUERY_IDS,

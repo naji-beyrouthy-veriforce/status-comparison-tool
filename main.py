@@ -25,7 +25,7 @@ if sys.platform == "win32":
 warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
 
 # Import configuration
-from config import (
+from src.config import (
     OUTPUT_DIR,
     DYNAMICS_DIR,
     REDASH_DIR,
@@ -48,7 +48,7 @@ from config import (
 logger = setup_logging("comparison_tool", console_output=True, file_output=True)
 
 # Import utility functions
-from utils import (
+from src.utils import (
     clean_uuid,
     format_ids_for_sql,
     find_column_by_keywords,
@@ -64,14 +64,14 @@ from utils import (
 
 # Import email report generation
 try:
-    from generate_email_report import generate_email_report as generate_report
+    from src.email_report import generate_email_report as generate_report
 except ImportError:
     logger.warning("Could not import email report generator")
     generate_report = None
 
 # Import Redash API (optional - only needed for automated mode)
 try:
-    from redash_api import run_all_redash_queries
+    from src.redash_api import run_all_redash_queries
 except ImportError:
     logger.warning("Could not import Redash API module")
     run_all_redash_queries = None

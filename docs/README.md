@@ -119,4 +119,4 @@ Auto-classifies files by keyword in filename:
 
 ## License
 
-Internal tool for Cognibox use.
+Internal tool for Company use.

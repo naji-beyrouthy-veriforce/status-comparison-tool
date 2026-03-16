@@ -1,5 +1,5 @@
 # Project Memory - Status Comparison Tool
-**Last Updated:** March 12, 2026  
+**Last Updated:** March 16, 2026  
 **Status:** Fully Functional - Automated Redash Integration  
 **Code Quality:** Clean - Technical Debt Resolved
 
@@ -40,7 +40,8 @@ Compare status records between Dynamics 365 (D365) and SafeContractor (SC) for t
 | `utils.py` | Reusable utilities: UUID cleaning, column detection, file validation, Excel formatting |
 | `main.py` | Core logic: ID extraction, Excel comparison generation, automated workflow orchestration |
 | `redash_api.py` | Redash API integration: query execution, polling, result downloading |
-| `generate_email_report.py` | Email report: replicates XLOOKUP via merge, formats status differences |
+| `redash_api.py` | Redash API integration: query execution, polling, result downloading |
+| `email_report.py` | Email report: replicates XLOOKUP via merge, formats status differences |
 | `gui_app.py` | 3-tab GUI: Upload → Run → Results (dark mode, drag & drop) |
 
 ---
@@ -70,7 +71,8 @@ Compare status records between Dynamics 365 (D365) and SafeContractor (SC) for t
 1. Verifies API connection (requires VPN + `REDASH_API_KEY` env var)
 2. For accreditation/WCB: fetches saved query SQL template → injects extracted IDs into `global_alcumus_id IN (...)` → executes via `POST /api/query_results`
 3. For client: fetches saved query SQL → executes as-is (NO ID injection)
-4. Polls `/api/jobs/{job_id}` until completion
+4. Accreditation query (1460) also returns `created_at` and `updated_at` columns
+5. Polls `/api/jobs/{job_id}` until completion
 5. Downloads results as CSV → converts to Excel → saves to `input/redash/`
 
 **Step 2c — Generate Comparisons:** `generate_comparisons()` + `generate_email_report()`
@@ -269,7 +271,7 @@ CLIENT_STATUS_COLUMN = "case"
 # Redash Configuration
 REDASH_BASE_URL = "https://redash.cognibox.net"
 REDASH_API_KEY = os.environ.get("REDASH_API_KEY", "")
-REDASH_QUERY_IDS = {"accreditation": 1266, "wcb": 1281, "client": 1277}
+REDASH_QUERY_IDS = {"accreditation": 1460, "wcb": 1281, "client": 1277}
 REDASH_POLL_INTERVAL = 3   # seconds between job status checks
 REDASH_POLL_TIMEOUT = 300  # max seconds to wait for query completion
 

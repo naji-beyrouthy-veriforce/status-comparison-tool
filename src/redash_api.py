@@ -3,7 +3,7 @@ Redash API Integration Module
 Automates query execution and result downloading from Redash.
 
 Handles three query types:
-- Accreditation (1266): Injects extracted IDs into SQL, executes directly, downloads
+- Accreditation (1460): Injects extracted IDs into SQL, executes directly, downloads (includes created_at, updated_at)
 - WCB (1281): Injects extracted IDs into SQL, executes directly, downloads
 - Client (1277): Executes as-is (no modification), downloads
 
@@ -342,7 +342,7 @@ def run_all_redash_queries():
     """
     Execute all 3 Redash queries and download results.
 
-    - Accreditation (1266): Injects extracted IDs → execute → download
+    - Accreditation (1460): Injects extracted IDs → execute → download (includes created_at, updated_at)
     - WCB (1281): Injects extracted IDs → execute → download
     - Client (1277): Execute as-is → download (NO modification)
 

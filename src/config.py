@@ -131,7 +131,7 @@ REDASH_BASE_URL = "https://redash.cognibox.net"
 REDASH_API_KEY = os.environ.get("REDASH_API_KEY", "")
 
 REDASH_QUERY_IDS = {
-    "accreditation": 1266,
+    "accreditation": 1460,
     "wcb": 1281,
     "client": 1277,
 }

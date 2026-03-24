@@ -327,7 +327,7 @@ def create_comparison_excel(report_type, df_d365, df_sc):
     for df in (df_sc, df_d365):
         for col in df.columns:
             if col.lower().endswith("_at") or col.lower().endswith("_date"):
-                df[col] = pd.to_datetime(df[col], errors="coerce")
+                df[col] = pd.to_datetime(df[col], dayfirst=True, errors="coerce")
 
     # ===== CREATE EXCEL FILE WITH TWO SHEETS AND XLOOKUP FORMULAS =====
     wb = Workbook()

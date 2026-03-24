@@ -65,7 +65,7 @@ def analyze_sc_sheet(df_sc, df_d365, report_type="client"):
     Args:
         df_sc: DataFrame from SC sheet
         df_d365: DataFrame from D365 sheet (needed for XLOOKUP replication)
-        report_type: Type of report (client, wcb, or accreditation)
+        report_type: Type of report (client, wcb, accreditation, or critical_document)
         
     Returns:
         dict: Statistics about differences
@@ -154,7 +154,7 @@ def analyze_d365_sheet(df_d365, df_sc, report_type="client"):
     Args:
         df_d365: DataFrame from D365 sheet
         df_sc: DataFrame from SC sheet (needed for XLOOKUP replication)
-        report_type: Type of report (client, wcb, or accreditation)
+        report_type: Type of report (client, wcb, accreditation, or critical_document)
         
     Returns:
         dict: Statistics about not found records and status breakdown
@@ -261,7 +261,8 @@ def generate_email_report():
     comparisons = {
         "Client": comparison_dir / "Client_Comparison.xlsx",
         "WCB": comparison_dir / "WCB_Comparison.xlsx",
-        "Accreditation": comparison_dir / "Accreditation_Comparison.xlsx"
+        "Accreditation": comparison_dir / "Accreditation_Comparison.xlsx",
+        "Critical_Document": comparison_dir / "Critical_Document_Comparison.xlsx"
     }
     
     # Check which files exist
@@ -334,8 +335,8 @@ def generate_email_report():
     
     email_lines = []
     
-    # Process in the order: Client, WCB, Accreditation
-    order = ["Client", "WCB", "Accreditation"]
+    # Process in the order: Critical_Document, Client, WCB, Accreditation
+    order = ["Critical_Document", "Client", "WCB", "Accreditation"]
     
     for name in order:
         if name not in results:
@@ -346,6 +347,8 @@ def generate_email_report():
         # Section header with display name
         if name == "Client":
             display_name = "Client Specific"
+        elif name == "Critical_Document":
+            display_name = "Critical Document"
         else:
             display_name = name
         

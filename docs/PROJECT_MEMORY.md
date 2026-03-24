@@ -29,7 +29,7 @@
 
 ## System Overview
 
-Compare status records between Dynamics 365 (D365) and SafeContractor (SC) for three report types: Client, WCB, Accreditation.
+Compare status records between Dynamics 365 (D365) and SafeContractor (SC) for four report types: Client, WCB, Accreditation, Critical Document.
 
 **Architecture:** `config.py` → `utils.py` → `main.py` / `generate_email_report.py` / `redash_api.py` → `gui_app.py`
 
@@ -49,10 +49,11 @@ Compare status records between Dynamics 365 (D365) and SafeContractor (SC) for t
 ## Complete Workflow
 
 ### Step 1: Upload D365 Files (GUI Tab 1)
-**Input:** Up to 3 Excel files from Dynamics 365 (not all required)
+**Input:** Up to 4 Excel files from Dynamics 365 (not all required)
 - `accreditation_d365.xlsx` (18K-23K rows)
 - `wcb_d365.xlsx` (65K-75K rows)
 - `client_d365.xlsx` (26K-32K rows)
+- `critical_document_d365.xlsx`
 
 **Action:** Drag & drop → System auto-classifies by filename patterns → "Save D365 Files" copies to `input/dynamics/`
 
@@ -60,7 +61,7 @@ Compare status records between Dynamics 365 (D365) and SafeContractor (SC) for t
 **Function:** `run_automated_workflow()` orchestrates 3 sub-steps:
 
 **Step 2a — Extract IDs:** `extract_and_save_ids()`
-1. Reads D365 files (WCB & Accreditation only; Client doesn't need ID extraction)
+1. Reads D365 files (WCB & Accreditation only; Client and Critical Document don't need ID extraction)
 2. Finds ID column via keywords `("global", "alcumus", "id")`
 3. Extracts UUIDs via compiled regex pattern
 4. Cleans (lowercase, trim), deduplicates, sorts
@@ -71,7 +72,8 @@ Compare status records between Dynamics 365 (D365) and SafeContractor (SC) for t
 1. Verifies API connection (requires VPN + `REDASH_API_KEY` env var)
 2. For accreditation/WCB: fetches saved query SQL template → injects extracted IDs into `global_alcumus_id IN (...)` → executes via `POST /api/query_results`
 3. For client: fetches saved query SQL → executes as-is (NO ID injection)
-4. Accreditation query (1460) also returns `created_at` and `updated_at` columns
+4. For critical_document: fetches saved query SQL (1464) → executes as-is (NO ID injection)
+5. Accreditation query (1460) also returns `created_at` and `updated_at` columns
 5. Polls `/api/jobs/{job_id}` until completion
 5. Downloads results as CSV → converts to Excel → saves to `input/redash/`
 
@@ -96,7 +98,7 @@ D365 Sheet: Original Columns → [SC Status] → [Is it the same?]
 
 Column placement varies by report type:
 - **Client:** Comparison columns inserted after `case` column
-- **Accreditation/WCB:** Comparison columns appended at end
+- **Accreditation/WCB/Critical Document:** Comparison columns appended at end
 
 **Output:**
 ```
@@ -104,7 +106,8 @@ output/
 ├── comparison_YYYY-MM-DD/
 │   ├── Accreditation_Comparison.xlsx
 │   ├── WCB_Comparison.xlsx
-│   └── Client_Comparison.xlsx
+│   ├── Client_Comparison.xlsx
+│   └── Critical_Document_Comparison.xlsx
 ├── query_ids/
 │   ├── accreditation_ids.sql.txt
 │   └── wcb_ids.sql.txt

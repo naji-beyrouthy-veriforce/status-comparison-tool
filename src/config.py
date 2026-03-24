@@ -41,21 +41,24 @@ D365_PATTERNS = {
     "accreditation": "accreditation",
     "wcb": "wcb",
     "client": ["client", "cs"],  # CS or Client Specific
+    "critical_document": ["critical", "cd"],  # Critical Document
 }
 
-SC_PATTERNS = {"accreditation": "accreditation", "wcb": "wcb", "client": ["client", "cs"]}
+SC_PATTERNS = {"accreditation": "accreditation", "wcb": "wcb", "client": ["client", "cs"], "critical_document": ["critical", "cd"]}
 
 # Backwards compatibility - default filenames
 D365_FILES = {
     "accreditation": "accreditation_d365.xlsx",
     "wcb": "wcb_d365.xlsx",
     "client": "client_d365.xlsx",
+    "critical_document": "critical_document_d365.xlsx",
 }
 
 SC_FILES = {
     "accreditation": "accreditation_sc.xlsx",
     "wcb": "wcb_sc.xlsx",
     "client": "client_sc.xlsx",
+    "critical_document": "critical_document_sc.xlsx",
 }
 
 # ============================================================================
@@ -103,17 +106,17 @@ FILE_SAVE_RETRY_DELAY_SECONDS = 1
 # ============================================================================
 # REPORT TYPES
 # ============================================================================
-REPORT_TYPES = ["accreditation", "wcb", "client"]
+REPORT_TYPES = ["accreditation", "wcb", "client", "critical_document"]
 
 # ============================================================================
 # CRITICAL BUSINESS LOGIC DOCUMENTATION
 # ============================================================================
-# ⚠️ IMPORTANT: CLIENT REPORT COMPARISON LOGIC
+# ⚠️ IMPORTANT: CLIENT & CRITICAL DOCUMENT REPORT COMPARISON LOGIC
 #
-# For CLIENT reports from SafeContractor Redash query:
-#   - The 'case' column IS the status column for client-specific global IDs
+# For CLIENT and CRITICAL DOCUMENT reports from SafeContractor Redash queries:
+#   - The 'case' column IS the status column
 #   - This is NOT the same as a regular 'status' column
-#   - Comparison logic MUST use 'case' column for client reports
+#   - Comparison logic MUST use 'case' column for these reports
 #
 # For ACCREDITATION/WCB reports:
 #   - The 'status' column is used normally
@@ -122,7 +125,10 @@ REPORT_TYPES = ["accreditation", "wcb", "client"]
 # DO NOT modify this logic without understanding the data structure!
 # ============================================================================
 
-CLIENT_STATUS_COLUMN = "case"  # The status column name for client reports
+CLIENT_STATUS_COLUMN = "case"  # The status column name for client/critical_document reports
+
+# Report types whose SC Redash query returns status in the 'case' column
+CASE_COLUMN_REPORT_TYPES = frozenset({"client", "critical_document"})
 
 # ============================================================================
 # REDASH API CONFIGURATION
@@ -134,6 +140,7 @@ REDASH_QUERY_IDS = {
     "accreditation": 1460,
     "wcb": 1281,
     "client": 1277,
+    "critical_document": 1464,
 }
 
 # Polling settings for query execution

@@ -458,7 +458,7 @@ def find_sc_status_column(df_sc, id_col_sc, report_type):
     Args:
         df_sc: SafeContractor DataFrame
         id_col_sc: Name of the ID column in SC data
-        report_type: Type of report ('client', 'wcb', or 'accreditation')
+        report_type: Type of report ('client', 'wcb', 'accreditation', or 'critical_document')
         
     Returns:
         str: Column name containing status, or None if not found
@@ -475,7 +475,7 @@ def find_sc_status_column(df_sc, id_col_sc, report_type):
             (col for col in df_sc.columns if col.lower() == CLIENT_STATUS_COLUMN.lower()), None
         )
     else:
-        # For other reports (WCB/Accreditation), find any column with 'status' that isn't the ID column
+        # For other reports (WCB/Accreditation/Critical Document), find any column with 'status' that isn't the ID column
         status_col_sc = next(
             (col for col in df_sc.columns if "status" in col.lower() and col != id_col_sc), None
         )

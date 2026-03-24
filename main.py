@@ -236,7 +236,7 @@ def create_comparison_excel(report_type, df_d365, df_sc):
     Comparing 'case' vs D365 Status is CORRECT, not a bug!
 
     Args:
-        report_type: Type of report (accreditation, wcb, or client)
+        report_type: Type of report (accreditation, wcb, client, or critical_document)
         df_d365: Dynamics 365 DataFrame
         df_sc: SafeContractor DataFrame
 
@@ -575,7 +575,7 @@ def generate_comparisons():
 
     success_count = 0
 
-    for report_type in ["accreditation", "wcb", "client"]:
+    for report_type in REPORT_TYPES:
         logger.info(f"Processing comparison for {report_type}")
         print(Messages.processing(report_type))
 

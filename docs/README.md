@@ -1,11 +1,11 @@
-# D365 vs SafeContractor Status Comparison Tool
+# Status Comparison Tool
 
 Automated desktop application for comparing Dynamics 365 and SafeContractor status reports. Features a 3-tab dark-themed GUI with integrated Redash API queries — upload D365 files, click one button, and get comparison Excel reports plus a ready-to-send email summary.
 
 ## Features
 
 - Dark-themed GUI with drag & drop file upload (ttkbootstrap)
-- Auto-detection and classification of Accreditation, WCB, and Client files
+- Auto-detection and classification of Accreditation, WCB, Client, and Critical Document files
 - Automated Redash API integration — extracts IDs, runs queries, downloads results
 - Two-sheet Excel comparisons with XLOOKUP formulas and red-highlighted headers
 - Auto-generated email report with status difference breakdowns
@@ -35,7 +35,7 @@ Other launchers:
 ## Usage — 3-Tab Workflow
 
 ### Tab 1: Upload D365 Files 📁
-1. Drag & drop up to 3 D365 Excel exports (Accreditation, WCB, Client Specific)
+1. Drag & drop up to 4 D365 Excel exports (Accreditation, WCB, Client Specific, Critical Document)
 2. Files are auto-classified by filename keywords
 3. Click **"Save D365 Files & Proceed"**
 
@@ -84,7 +84,7 @@ status-comparaison-tool/
 ## Output Files
 
 ### Comparison Excel Workbooks
-Each report type (Accreditation, WCB, Client) produces a workbook with two sheets:
+Each report type (Accreditation, WCB, Client, Critical Document) produces a workbook with two sheets:
 - **SC Sheet**: SafeContractor data + D365 status XLOOKUP + "Is it the same?" column
 - **D365 Sheet**: D365 data + SC status XLOOKUP + "Is it the same?" column
 - Red headers on key columns (Global Alcumus ID, Status, comparison results)
@@ -102,6 +102,7 @@ Auto-classifies files by keyword in filename:
 - **Accreditation**: contains "accreditation"
 - **WCB**: contains "wcb"
 - **Client**: contains "client" or "cs"
+- **Critical Document**: contains "critical" or "cd"
 
 ### Key Business Logic
 - **Client reports** use the `case` column as status (not `status`) — this is correct per SC Redash query design

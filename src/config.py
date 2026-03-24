@@ -41,21 +41,24 @@ D365_PATTERNS = {
     "accreditation": "accreditation",
     "wcb": "wcb",
     "client": ["client", "cs"],  # CS or Client Specific
+    "critical_document": ["critical", "cd"],  # Critical Document
 }
 
-SC_PATTERNS = {"accreditation": "accreditation", "wcb": "wcb", "client": ["client", "cs"]}
+SC_PATTERNS = {"accreditation": "accreditation", "wcb": "wcb", "client": ["client", "cs"], "critical_document": ["critical", "cd"]}
 
 # Backwards compatibility - default filenames
 D365_FILES = {
     "accreditation": "accreditation_d365.xlsx",
     "wcb": "wcb_d365.xlsx",
     "client": "client_d365.xlsx",
+    "critical_document": "critical_document_d365.xlsx",
 }
 
 SC_FILES = {
     "accreditation": "accreditation_sc.xlsx",
     "wcb": "wcb_sc.xlsx",
     "client": "client_sc.xlsx",
+    "critical_document": "critical_document_sc.xlsx",
 }
 
 # ============================================================================
@@ -103,7 +106,7 @@ FILE_SAVE_RETRY_DELAY_SECONDS = 1
 # ============================================================================
 # REPORT TYPES
 # ============================================================================
-REPORT_TYPES = ["accreditation", "wcb", "client"]
+REPORT_TYPES = ["accreditation", "wcb", "client", "critical_document"]
 
 # ============================================================================
 # CRITICAL BUSINESS LOGIC DOCUMENTATION
@@ -134,6 +137,7 @@ REDASH_QUERY_IDS = {
     "accreditation": 1460,
     "wcb": 1281,
     "client": 1277,
+    "critical_document": 1464,
 }
 
 # Polling settings for query execution

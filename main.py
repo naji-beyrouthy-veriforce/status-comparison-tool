@@ -38,6 +38,7 @@ from src.config import (
     MAX_FILE_SAVE_RETRIES,
     FILE_SAVE_RETRY_DELAY_SECONDS,
     CLIENT_STATUS_COLUMN,
+    CASE_COLUMN_REPORT_TYPES,
     REDASH_API_KEY,
     Messages,
     setup_logging,
@@ -344,10 +345,10 @@ def create_comparison_excel(report_type, df_d365, df_sc):
 
     # Determine where to insert new comparison columns based on report type
     sc_cols_lower = {col.lower(): idx for idx, col in enumerate(sc_cols, 1)}
-    is_client = report_type.lower() == "client"
+    is_client = report_type.lower() in CASE_COLUMN_REPORT_TYPES
 
     # COLUMN PLACEMENT STRATEGY:
-    # - Client reports: Insert after CLIENT_STATUS_COLUMN for better visibility
+    # - Client/Critical Document reports: Insert after CLIENT_STATUS_COLUMN for better visibility
     # - Accreditation/WCB: Append at the end
     if is_client and CLIENT_STATUS_COLUMN.lower() in sc_cols_lower:
         # For client reports, insert after the CLIENT_STATUS_COLUMN
@@ -411,9 +412,9 @@ def create_comparison_excel(report_type, df_d365, df_sc):
     # ============================================================================
     # CRITICAL: Determine which column to use for status lookups
     # ============================================================================
-    # CLIENT REPORTS: 'case' column IS the status column (business requirement)
-    #   - The SafeContractor Redash query for client-specific global IDs
-    #     returns status in the 'case' column
+    # CLIENT/CRITICAL DOCUMENT REPORTS: 'case' column IS the status column
+    #   - The SafeContractor Redash queries for these report types
+    #     return status in the 'case' column
     #   - Must compare 'case' vs D365 Status for accurate comparison
     #
     # ACCREDITATION/WCB REPORTS: Regular 'status' column is used
@@ -422,7 +423,7 @@ def create_comparison_excel(report_type, df_d365, df_sc):
     # DO NOT "FIX" THIS - This is the CORRECT implementation!
     # ============================================================================
     comparison_col_letter = sc_status_col_letter
-    if report_type.lower() == "client":
+    if report_type.lower() in CASE_COLUMN_REPORT_TYPES:
         case_col_idx = next(
             (idx for idx, col in enumerate(sc_cols, 1) if col.lower() == CLIENT_STATUS_COLUMN.lower()), None
         )
@@ -433,7 +434,7 @@ def create_comparison_excel(report_type, df_d365, df_sc):
             comparison_col_letter = ws_sc.cell(1, case_col_idx).column_letter
 
     # Log comparison logic for verification
-    comparison_col_name = CLIENT_STATUS_COLUMN if report_type.lower() == "client" else status_col_sc
+    comparison_col_name = CLIENT_STATUS_COLUMN if report_type.lower() in CASE_COLUMN_REPORT_TYPES else status_col_sc
     print(f"     Comparison Logic:")
     print(f"       - D365 Sheet: Comparing D365 '{status_col_d365}' vs SC '{comparison_col_name}'")
     print(f"       - SC Sheet: Comparing SC '{comparison_col_name}' vs D365 Status")

@@ -335,8 +335,8 @@ def generate_email_report():
     
     email_lines = []
     
-    # Process in the order: Client, WCB, Accreditation, Critical_Document
-    order = ["Client", "WCB", "Accreditation", "Critical_Document"]
+    # Process in the order: Critical_Document, Client, WCB, Accreditation
+    order = ["Critical_Document", "Client", "WCB", "Accreditation"]
     
     for name in order:
         if name not in results:

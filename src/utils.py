@@ -13,6 +13,7 @@ from .config import (
     HEADER_FONT,
     HIGHLIGHT_HEADERS,
     CLIENT_STATUS_COLUMN,
+    CASE_COLUMN_REPORT_TYPES,
 )
 
 
@@ -469,8 +470,8 @@ def find_sc_status_column(df_sc, id_col_sc, report_type):
     """
     status_col_sc = None
     
-    if report_type.lower() == "client":
-        # For client reports, look for CLIENT_STATUS_COLUMN which contains the status
+    if report_type.lower() in CASE_COLUMN_REPORT_TYPES:
+        # For client/critical_document reports, look for CLIENT_STATUS_COLUMN which contains the status
         status_col_sc = next(
             (col for col in df_sc.columns if col.lower() == CLIENT_STATUS_COLUMN.lower()), None
         )

@@ -111,12 +111,12 @@ REPORT_TYPES = ["accreditation", "wcb", "client", "critical_document"]
 # ============================================================================
 # CRITICAL BUSINESS LOGIC DOCUMENTATION
 # ============================================================================
-# ⚠️ IMPORTANT: CLIENT REPORT COMPARISON LOGIC
+# ⚠️ IMPORTANT: CLIENT & CRITICAL DOCUMENT REPORT COMPARISON LOGIC
 #
-# For CLIENT reports from SafeContractor Redash query:
-#   - The 'case' column IS the status column for client-specific global IDs
+# For CLIENT and CRITICAL DOCUMENT reports from SafeContractor Redash queries:
+#   - The 'case' column IS the status column
 #   - This is NOT the same as a regular 'status' column
-#   - Comparison logic MUST use 'case' column for client reports
+#   - Comparison logic MUST use 'case' column for these reports
 #
 # For ACCREDITATION/WCB reports:
 #   - The 'status' column is used normally
@@ -125,7 +125,10 @@ REPORT_TYPES = ["accreditation", "wcb", "client", "critical_document"]
 # DO NOT modify this logic without understanding the data structure!
 # ============================================================================
 
-CLIENT_STATUS_COLUMN = "case"  # The status column name for client reports
+CLIENT_STATUS_COLUMN = "case"  # The status column name for client/critical_document reports
+
+# Report types whose SC Redash query returns status in the 'case' column
+CASE_COLUMN_REPORT_TYPES = frozenset({"client", "critical_document"})
 
 # ============================================================================
 # REDASH API CONFIGURATION

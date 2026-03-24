@@ -322,6 +322,13 @@ def create_comparison_excel(report_type, df_d365, df_sc):
     # This is the CORRECT behavior per business requirements.
     # ============================================================================
 
+    # ===== CONVERT DATE COLUMNS TO PROPER DATETIME =====
+    date_format = "YYYY-MM-DD HH:MM:SS"
+    for df in (df_sc, df_d365):
+        for col in df.columns:
+            if col.lower().endswith("_at") or col.lower().endswith("_date"):
+                df[col] = pd.to_datetime(df[col], errors="coerce")
+
     # ===== CREATE EXCEL FILE WITH TWO SHEETS AND XLOOKUP FORMULAS =====
     wb = Workbook()
     wb.remove(wb.active)
@@ -330,11 +337,18 @@ def create_comparison_excel(report_type, df_d365, df_sc):
     ws_sc = wb.create_sheet("SC")
 
     # Write SC data (preserve original column order)
+    sc_data_cols = df_sc.drop(columns=["clean_id"]).columns
     for r_idx, row in enumerate(
         dataframe_to_rows(df_sc.drop(columns=["clean_id"]), index=False, header=True), 1
     ):
         for c_idx, value in enumerate(row, 1):
             ws_sc.cell(row=r_idx, column=c_idx, value=value)
+
+    # Apply date format to date columns in SC sheet
+    for c_idx, col in enumerate(sc_data_cols, 1):
+        if col.lower().endswith("_at") or col.lower().endswith("_date"):
+            for r_idx in range(2, ws_sc.max_row + 1):
+                ws_sc.cell(row=r_idx, column=c_idx).number_format = date_format
 
     # Find SC ID and Status column positions
     sc_cols = list(df_sc.drop(columns=["clean_id"]).columns)
@@ -383,11 +397,18 @@ def create_comparison_excel(report_type, df_d365, df_sc):
     ws_d365 = wb.create_sheet("D365")
 
     # Write D365 data (preserve original column order)
+    d365_data_cols = df_d365.drop(columns=["clean_id"]).columns
     for r_idx, row in enumerate(
         dataframe_to_rows(df_d365.drop(columns=["clean_id"]), index=False, header=True), 1
     ):
         for c_idx, value in enumerate(row, 1):
             ws_d365.cell(row=r_idx, column=c_idx, value=value)
+
+    # Apply date format to date columns in D365 sheet
+    for c_idx, col in enumerate(d365_data_cols, 1):
+        if col.lower().endswith("_at") or col.lower().endswith("_date"):
+            for r_idx in range(2, ws_d365.max_row + 1):
+                ws_d365.cell(row=r_idx, column=c_idx).number_format = date_format
 
     # Find D365 ID and Status column positions (1-indexed for Excel)
     d365_cols = list(df_d365.drop(columns=["clean_id"]).columns)

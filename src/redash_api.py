@@ -28,6 +28,7 @@ from .config import (
     REDASH_DIR,
     QUERY_IDS_DIR,
     SC_FILES,
+    REPORT_TYPE_DISPLAY_NAMES,
     Messages,
     setup_logging,
 )
@@ -428,11 +429,11 @@ def run_all_redash_queries():
     print("\n" + "-" * 40)
     print(f"Downloaded {len(results)}/5 Redash results:")
     for rt, path in results.items():
-        print(f"  {Messages.SUCCESS} {rt.title()}: {path.name}")
+        print(f"  {Messages.SUCCESS} {REPORT_TYPE_DISPLAY_NAMES.get(rt, rt.title())}: {path.name}")
 
     missing = {"accreditation", "wcb", "client", "critical_document", "esg"} - set(results.keys())
     for rt in sorted(missing):
-        print(f"  {Messages.ERROR} {rt.title()}: Failed")
+        print(f"  {Messages.ERROR} {REPORT_TYPE_DISPLAY_NAMES.get(rt, rt.title())}: Failed")
 
     return results
 

@@ -111,6 +111,15 @@ FILE_SAVE_RETRY_DELAY_SECONDS = 1
 # ============================================================================
 REPORT_TYPES = ["accreditation", "wcb", "client", "critical_document", "esg"]
 
+# Display names used for output filenames and UI labels (preserves correct casing e.g. WCB)
+REPORT_TYPE_DISPLAY_NAMES = {
+    "accreditation": "Accreditation",
+    "wcb": "WCB",
+    "client": "Client",
+    "critical_document": "Critical_Document",
+    "esg": "Esg",
+}
+
 # ============================================================================
 # CRITICAL BUSINESS LOGIC DOCUMENTATION
 # ============================================================================

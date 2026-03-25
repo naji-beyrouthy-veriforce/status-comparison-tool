@@ -476,7 +476,7 @@ def find_sc_status_column(df_sc, id_col_sc, report_type):
             (col for col in df_sc.columns if col.lower() == CLIENT_STATUS_COLUMN.lower()), None
         )
     else:
-        # For other reports (WCB/Accreditation/Critical Document), find any column with 'status' that isn't the ID column
+        # For other reports (WCB/Accreditation), find any column with 'status' that isn't the ID column
         status_col_sc = next(
             (col for col in df_sc.columns if "status" in col.lower() and col != id_col_sc), None
         )

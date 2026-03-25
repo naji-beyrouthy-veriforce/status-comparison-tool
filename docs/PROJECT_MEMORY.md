@@ -23,15 +23,15 @@
 ### XLOOKUP Replication
 - openpyxl formulas are text strings until Excel calculates them
 - Email report generator replicates XLOOKUP via pandas merge (not by reading formulas)
-- `generate_email_report.py` operates on the raw SC/D365 data, NOT on calculated Excel values
+- `email_report.py` operates on the raw SC/D365 data, NOT on calculated Excel values
 
 ---
 
 ## System Overview
 
-Compare status records between Dynamics 365 (D365) and SafeContractor (SC) for four report types: Client, WCB, Accreditation, Critical Document.
+Compare status records between Dynamics 365 (D365) and SafeContractor (SC) for five report types: Client, WCB, Accreditation, Critical Document, ESG.
 
-**Architecture:** `config.py` → `utils.py` → `main.py` / `generate_email_report.py` / `redash_api.py` → `gui_app.py`
+**Architecture:** `config.py` → `utils.py` → `main.py` / `email_report.py` / `redash_api.py` → `gui_app.py`
 
 **Key Components:**
 | File | Purpose |
@@ -39,7 +39,6 @@ Compare status records between Dynamics 365 (D365) and SafeContractor (SC) for f
 | `config.py` | All constants, paths, patterns, `Messages` class, `setup_logging()`, Redash config |
 | `utils.py` | Reusable utilities: UUID cleaning, column detection, file validation, Excel formatting |
 | `main.py` | Core logic: ID extraction, Excel comparison generation, automated workflow orchestration |
-| `redash_api.py` | Redash API integration: query execution, polling, result downloading |
 | `redash_api.py` | Redash API integration: query execution, polling, result downloading |
 | `email_report.py` | Email report: replicates XLOOKUP via merge, formats status differences |
 | `gui_app.py` | 3-tab GUI: Upload → Run → Results (dark mode, drag & drop) |
@@ -171,7 +170,7 @@ status_breakdown = not_found_df[status_reason_col].value_counts().to_dict()
 | `run_automated_workflow()` | Full pipeline: extract IDs → Redash queries → comparisons |
 | `main()` | Entry point: automated mode (if API key set) or manual fallback |
 
-### generate_email_report.py
+### email_report.py
 | Function | Purpose |
 |----------|---------|
 | `read_comparison_file(file_path)` | Reads SC and D365 sheets from comparison Excel |
@@ -303,16 +302,19 @@ D365 Excel → [Tab 1 Upload] → input/dynamics/
 ```
 status-comparaison-tool/
 ├── main.py                   # Core logic + automated workflow orchestration
-├── redash_api.py             # Redash API integration (query execution & download)
-├── generate_email_report.py  # Email report generator (merge-based XLOOKUP replication)
-├── config.py                 # Constants, Messages class, Redash config, logging setup
-├── utils.py                  # Reusable utilities (UUID, columns, validation, formatting)
 ├── gui_app.py                # 3-tab GUI (Upload, Run, Results) - dark mode
 ├── requirements.txt          # pandas, openpyxl, requests, tkinterdnd2, ttkbootstrap
 ├── Run_*.bat                 # Launch scripts (set REDASH_API_KEY env var)
 ├── .gitignore                # Excludes *.bat, logs/, __pycache__/
-├── README.md                 # User documentation
-├── PROJECT_MEMORY.md         # This file
+├── src/
+│   ├── __init__.py
+│   ├── config.py             # Constants, Messages class, Redash config, logging setup
+│   ├── utils.py              # Reusable utilities (UUID, columns, validation, formatting)
+│   ├── redash_api.py         # Redash API integration (query execution & download)
+│   └── email_report.py       # Email report generator (merge-based XLOOKUP replication)
+├── docs/
+│   ├── README.md             # User documentation
+│   └── PROJECT_MEMORY.md     # This file
 ├── logs/                     # Auto-rotating logs (git-ignored)
 ├── input/
 │   ├── dynamics/             # D365 files (uploaded via GUI)

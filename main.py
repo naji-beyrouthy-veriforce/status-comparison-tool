@@ -39,6 +39,7 @@ from src.config import (
     FILE_SAVE_RETRY_DELAY_SECONDS,
     CLIENT_STATUS_COLUMN,
     CASE_COLUMN_REPORT_TYPES,
+    REPORT_TYPE_DISPLAY_NAMES,
     REDASH_API_KEY,
     Messages,
     setup_logging,
@@ -500,7 +501,8 @@ def create_comparison_excel(report_type, df_d365, df_sc):
     comparison_dir.mkdir(parents=True, exist_ok=True)
     
     # Save file with retry logic for locked files
-    output_file = comparison_dir / f"{report_type.title()}_Comparison.xlsx"
+    display_name = REPORT_TYPE_DISPLAY_NAMES.get(report_type, report_type.title())
+    output_file = comparison_dir / f"{display_name}_Comparison.xlsx"
 
     # Check if file is writable before attempting save
     if output_file.exists():
@@ -512,7 +514,7 @@ def create_comparison_excel(report_type, df_d365, df_sc):
             # Try with timestamp immediately
 
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            output_file = comparison_dir / f"{report_type.title()}_Comparison_{timestamp}.xlsx"
+            output_file = comparison_dir / f"{display_name}_Comparison_{timestamp}.xlsx"
             print(f"     💾 Saving as: {output_file.name}")
 
     # Try to save with retries
@@ -546,7 +548,7 @@ def create_comparison_excel(report_type, df_d365, df_sc):
                 )
 
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                backup_file = comparison_dir / f"{report_type.title()}_Comparison_{timestamp}.xlsx"
+                backup_file = comparison_dir / f"{display_name}_Comparison_{timestamp}.xlsx"
 
                 try:
                     wb.save(backup_file)
@@ -705,7 +707,7 @@ def generate_comparisons():
             except Exception as e:
                 logger.error(f"Failed to generate email report: {e}")
                 print(Messages.warning(f"Could not generate email report: {e}"))
-                print("     You can run it manually with: python generate_email_report.py")
+                print("     You can run it manually with: python -m src.email_report")
         else:
             logger.warning("Email report generator not available")
             print(Messages.warning("Email report generator not available"))

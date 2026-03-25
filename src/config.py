@@ -42,9 +42,10 @@ D365_PATTERNS = {
     "wcb": "wcb",
     "client": ["client", "cs"],  # CS or Client Specific
     "critical_document": ["critical", "cd"],  # Critical Document
+    "esg": "esg",  # ESG
 }
 
-SC_PATTERNS = {"accreditation": "accreditation", "wcb": "wcb", "client": ["client", "cs"], "critical_document": ["critical", "cd"]}
+SC_PATTERNS = {"accreditation": "accreditation", "wcb": "wcb", "client": ["client", "cs"], "critical_document": ["critical", "cd"], "esg": "esg"}
 
 # Backwards compatibility - default filenames
 D365_FILES = {
@@ -52,6 +53,7 @@ D365_FILES = {
     "wcb": "wcb_d365.xlsx",
     "client": "client_d365.xlsx",
     "critical_document": "critical_document_d365.xlsx",
+    "esg": "esg_d365.xlsx",
 }
 
 SC_FILES = {
@@ -59,6 +61,7 @@ SC_FILES = {
     "wcb": "wcb_sc.xlsx",
     "client": "client_sc.xlsx",
     "critical_document": "critical_document_sc.xlsx",
+    "esg": "esg_sc.xlsx",
 }
 
 # ============================================================================
@@ -106,7 +109,7 @@ FILE_SAVE_RETRY_DELAY_SECONDS = 1
 # ============================================================================
 # REPORT TYPES
 # ============================================================================
-REPORT_TYPES = ["accreditation", "wcb", "client", "critical_document"]
+REPORT_TYPES = ["accreditation", "wcb", "client", "critical_document", "esg"]
 
 # ============================================================================
 # CRITICAL BUSINESS LOGIC DOCUMENTATION
@@ -128,7 +131,7 @@ REPORT_TYPES = ["accreditation", "wcb", "client", "critical_document"]
 CLIENT_STATUS_COLUMN = "case"  # The status column name for client/critical_document reports
 
 # Report types whose SC Redash query returns status in the 'case' column
-CASE_COLUMN_REPORT_TYPES = frozenset({"client", "critical_document"})
+CASE_COLUMN_REPORT_TYPES = frozenset({"client", "critical_document", "esg"})
 
 # ============================================================================
 # REDASH API CONFIGURATION
@@ -141,6 +144,7 @@ REDASH_QUERY_IDS = {
     "wcb": 1281,
     "client": 1277,
     "critical_document": 1464,
+    "esg": 1465,
 }
 
 # Polling settings for query execution

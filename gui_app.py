@@ -54,6 +54,7 @@ class ComparisonApp:
             "wcb_d365": None,
             "client_d365": None,
             "critical_document_d365": None,
+            "esg_d365": None,
         }
 
         self.setup_ui()
@@ -151,7 +152,7 @@ class ComparisonApp:
             fg=self.colors['accent_blue'],
         ).pack(anchor=tk.W, padx=20, pady=(15, 5))
 
-        instruction_text = "Drag & drop your D365 files (any combination of Accreditation, WCB, Client, Critical Document). Not all 4 are required."
+        instruction_text = "Drag & drop your D365 files (any combination of Accreditation, WCB, Client, Critical Document, ESG). Not all 5 are required."
 
         tk.Label(
             info_frame,
@@ -187,7 +188,7 @@ class ComparisonApp:
 
         tk.Label(
             bulk_drop,
-            text="🚀 DRAG & DROP D365 FILES HERE\n\nDrop one or more files — Accreditation, WCB, Client, and/or Critical Document",
+            text="🚀 DRAG & DROP D365 FILES HERE\n\nDrop one or more files — Accreditation, WCB, Client, Critical Document, and/or ESG",
             bg="#2a3f5f",
             fg="#93c5fd",
             font=("Segoe UI", 11, "bold"),
@@ -209,7 +210,7 @@ class ComparisonApp:
         ).pack(anchor=tk.W, padx=15, pady=(10, 5))
         
         self.d365_status_labels = {}
-        for report_type, display_name in [("accreditation", "Accreditation"), ("wcb", "WCB"), ("client", "Client Specific"), ("critical_document", "Critical Document")]:
+        for report_type, display_name in [("accreditation", "Accreditation"), ("wcb", "WCB"), ("client", "Client Specific"), ("critical_document", "Critical Document"), ("esg", "ESG")]:
             row = tk.Frame(status_frame, bg=self.colors['bg_card'])
             row.pack(fill=tk.X, padx=15, pady=3)
             
@@ -501,7 +502,8 @@ class ComparisonApp:
                     f"  • 'accreditation' for Accreditation\n"
                     f"  • 'wcb' for WCB\n"
                     f"  • 'cs' or 'client' for Client Specific\n"
-                    f"  • 'critical' or 'cd' for Critical Document",
+                    f"  • 'critical' or 'cd' for Critical Document\n"
+                    f"  • 'esg' for ESG",
                 )
                 self.update_status_indicator("error")
 
@@ -641,7 +643,7 @@ class ComparisonApp:
     def check_upload_status(self):
         """Check if any D365 files are uploaded and enable buttons"""
         d365_any = any(
-            self.uploaded_files[k] for k in ["accreditation_d365", "wcb_d365", "client_d365", "critical_document_d365"]
+            self.uploaded_files[k] for k in ["accreditation_d365", "wcb_d365", "client_d365", "critical_document_d365", "esg_d365"]
         )
         if hasattr(self, "btn_process_d365"):
             self.btn_process_d365.config(state=tk.NORMAL if d365_any else tk.DISABLED)
@@ -715,7 +717,7 @@ class ComparisonApp:
             
             saved_files = []
             skipped_files = []
-            for key in ["accreditation_d365", "wcb_d365", "client_d365", "critical_document_d365"]:
+            for key in ["accreditation_d365", "wcb_d365", "client_d365", "critical_document_d365", "esg_d365"]:
                 report_type = key.replace("_d365", "")
                 if self.uploaded_files[key]:
                     source = Path(self.uploaded_files[key])

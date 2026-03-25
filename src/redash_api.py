@@ -2,11 +2,12 @@
 Redash API Integration Module
 Automates query execution and result downloading from Redash.
 
-Handles four query types:
+Handles five query types:
 - Accreditation (1460): Injects extracted IDs into SQL, executes directly, downloads (includes created_at, updated_at)
 - WCB (1281): Injects extracted IDs into SQL, executes directly, downloads
 - Client (1277): Executes as-is (no modification), downloads
 - Critical Document (1464): Executes as-is (no modification), downloads
+- ESG (1465): Executes as-is (no modification), downloads
 
 Approach: Executes raw SQL via /api/query_results with data_source_id.
 Never modifies saved Redash queries — read-only API key is sufficient.
@@ -287,7 +288,7 @@ def run_redash_query(query_id, report_type, ids_formatted=None):
 
     Args:
         query_id: Redash query ID
-        report_type: 'accreditation', 'wcb', 'client', or 'critical_document'
+        report_type: 'accreditation', 'wcb', 'client', 'critical_document', or 'esg'
         ids_formatted: SQL-formatted IDs string, or None for client
 
     Returns:
@@ -341,12 +342,13 @@ def run_redash_query(query_id, report_type, ids_formatted=None):
 
 def run_all_redash_queries():
     """
-    Execute all 4 Redash queries and download results.
+    Execute all 5 Redash queries and download results.
 
     - Accreditation (1460): Injects extracted IDs → execute → download (includes created_at, updated_at)
     - WCB (1281): Injects extracted IDs → execute → download
     - Client (1277): Execute as-is → download (NO modification)
     - Critical Document (1464): Execute as-is → download (NO modification)
+    - ESG (1465): Execute as-is → download (NO modification)
 
     Returns:
         dict: {report_type: output_path} for successful downloads
@@ -410,13 +412,25 @@ def run_all_redash_queries():
         print(f"  {Messages.ERROR} Failed to process critical_document: {e}")
         logger.error(f"Failed critical_document Redash query: {e}")
 
+    # --- ESG: execute as-is, download (NO modification) ---
+    print(f"\n{Messages.PROCESSING} Processing ESG...")
+
+    try:
+        query_id = REDASH_QUERY_IDS["esg"]
+        output_path = run_redash_query(query_id, "esg")
+        if output_path:
+            results["esg"] = output_path
+    except Exception as e:
+        print(f"  {Messages.ERROR} Failed to process esg: {e}")
+        logger.error(f"Failed esg Redash query: {e}")
+
     # --- Summary ---
     print("\n" + "-" * 40)
-    print(f"Downloaded {len(results)}/4 Redash results:")
+    print(f"Downloaded {len(results)}/5 Redash results:")
     for rt, path in results.items():
         print(f"  {Messages.SUCCESS} {rt.title()}: {path.name}")
 
-    missing = {"accreditation", "wcb", "client", "critical_document"} - set(results.keys())
+    missing = {"accreditation", "wcb", "client", "critical_document", "esg"} - set(results.keys())
     for rt in sorted(missing):
         print(f"  {Messages.ERROR} {rt.title()}: Failed")
 

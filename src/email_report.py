@@ -262,7 +262,8 @@ def generate_email_report():
         "Client": comparison_dir / "Client_Comparison.xlsx",
         "WCB": comparison_dir / "WCB_Comparison.xlsx",
         "Accreditation": comparison_dir / "Accreditation_Comparison.xlsx",
-        "Critical_Document": comparison_dir / "Critical_Document_Comparison.xlsx"
+        "Critical_Document": comparison_dir / "Critical_Document_Comparison.xlsx",
+        "Esg": comparison_dir / "Esg_Comparison.xlsx"
     }
     
     # Check which files exist
@@ -335,8 +336,8 @@ def generate_email_report():
     
     email_lines = []
     
-    # Process in the order: Critical_Document, Client, WCB, Accreditation
-    order = ["Critical_Document", "Client", "WCB", "Accreditation"]
+    # Process in the order: ESG, Critical_Document, Client, WCB, Accreditation
+    order = ["Esg", "Critical_Document", "Client", "WCB", "Accreditation"]
     
     for name in order:
         if name not in results:
@@ -349,6 +350,8 @@ def generate_email_report():
             display_name = "Client Specific"
         elif name == "Critical_Document":
             display_name = "Critical Document"
+        elif name == "Esg":
+            display_name = "ESG"
         else:
             display_name = name
         

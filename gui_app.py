@@ -19,7 +19,7 @@ import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
 
 # Import configuration and utilities
-from src.config import INPUT_DIR, OUTPUT_DIR, DYNAMICS_DIR, REDASH_DIR, QUERY_IDS_DIR, D365_FILES, SC_FILES, REDASH_API_KEY, D365_PATTERNS, SC_PATTERNS, ALLOWED_FILE_EXTENSIONS, Messages, setup_logging, get_dated_comparison_dir
+from src.config import INPUT_DIR, OUTPUT_DIR, DYNAMICS_DIR, REDASH_DIR, QUERY_IDS_DIR, D365_FILES, SC_FILES, REDASH_API_KEY, D365_PATTERNS, SC_PATTERNS, ALLOWED_FILE_EXTENSIONS, Messages, setup_logging, get_dated_comparison_dir, REPORT_TYPE_DISPLAY_NAMES
 
 # Import main processing functions
 from main import extract_and_save_ids, generate_comparisons, run_automated_workflow
@@ -741,9 +741,9 @@ class ComparisonApp:
             if skipped_files:
                 logger.info(f"Skipped (not uploaded): {', '.join(skipped_files)}")
             
-            msg = f"{Messages.SUCCESS} Saved {len(saved_files)} D365 file(s): {', '.join(f.title() for f in saved_files)}"
+            msg = f"{Messages.SUCCESS} Saved {len(saved_files)} D365 file(s): {', '.join(REPORT_TYPE_DISPLAY_NAMES.get(f, f.title()) for f in saved_files)}"
             if skipped_files:
-                msg += f"\n\nSkipped (not uploaded): {', '.join(f.title() for f in skipped_files)}"
+                msg += f"\n\nSkipped (not uploaded): {', '.join(REPORT_TYPE_DISPLAY_NAMES.get(f, f.title()) for f in skipped_files)}"
             msg += "\n\nNext step: Go to 'Run Comparison' tab to start the automated process."
             messagebox.showinfo("Success", msg)
 

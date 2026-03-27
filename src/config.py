@@ -117,7 +117,7 @@ REPORT_TYPE_DISPLAY_NAMES = {
     "wcb": "WCB",
     "client": "Client",
     "critical_document": "Critical_Document",
-    "esg": "Esg",
+    "esg": "ESG",
 }
 
 # ============================================================================

@@ -374,7 +374,7 @@ def run_all_redash_queries():
 
         ids_formatted = read_ids_from_file(report_type)
         if not ids_formatted:
-            print(f"  {Messages.WARNING} No extracted IDs found for {report_type}, skipping...")
+            print(f"  {Messages.WARNING} No extracted IDs found for {report_type.upper()}, skipping...")
             print(f"  Make sure extract_and_save_ids() ran successfully first.")
             continue
 
@@ -385,8 +385,8 @@ def run_all_redash_queries():
             if output_path:
                 results[report_type] = output_path
         except Exception as e:
-            print(f"  {Messages.ERROR} Failed to process {report_type}: {e}")
-            logger.error(f"Failed {report_type} Redash query: {e}")
+            print(f"  {Messages.ERROR} Failed to process {report_type.upper()}: {e}")
+            logger.error(f"Failed {report_type.upper()} Redash query: {e}")
             continue
 
     # --- Client: execute as-is, download (NO modification) ---
@@ -422,8 +422,8 @@ def run_all_redash_queries():
         if output_path:
             results["esg"] = output_path
     except Exception as e:
-        print(f"  {Messages.ERROR} Failed to process esg: {e}")
-        logger.error(f"Failed esg Redash query: {e}")
+        print(f"  {Messages.ERROR} Failed to process ESG: {e}")
+        logger.error(f"Failed ESG Redash query: {e}")
 
     # --- Summary ---
     print("\n" + "-" * 40)

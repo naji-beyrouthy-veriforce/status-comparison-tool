@@ -103,7 +103,7 @@ def extract_and_save_ids():
 
         if not file_path:
             logger.warning(f"No D365 {report_type} file found")
-            print(Messages.warning(Messages.FILE_NOT_FOUND.format(report_type=report_type)))
+            print(Messages.warning(Messages.FILE_NOT_FOUND.format(report_type=REPORT_TYPE_DISPLAY_NAMES.get(report_type, report_type.title()))))
             print(f"     {Messages.LOOKING_FOR.format(patterns=D365_PATTERNS[report_type])}")
             continue
 
@@ -248,7 +248,7 @@ def create_comparison_excel(report_type, df_d365, df_sc):
     logger.info(f"Creating comparison for {report_type}: D365={len(df_d365)} rows, SC={len(df_sc)} rows")
     print(
         Messages.info(
-            Messages.CREATING_COMPARISON.format(report_type=report_type)
+            Messages.CREATING_COMPARISON.format(report_type=REPORT_TYPE_DISPLAY_NAMES.get(report_type, report_type.title()))
         )
     )
     print(
@@ -681,7 +681,7 @@ def generate_comparisons():
 
         except Exception as e:
             logger.exception(f"Error processing {report_type}: {str(e)}")
-            print(f"{Messages.ERROR} Error processing {report_type}: {e}")
+            print(f"{Messages.ERROR} Error processing {REPORT_TYPE_DISPLAY_NAMES.get(report_type, report_type.title())}: {e}")
             continue
 
     logger.info(f"Comparison generation completed: {success_count} files created")

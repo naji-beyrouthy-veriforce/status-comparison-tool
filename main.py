@@ -372,10 +372,14 @@ def create_comparison_excel(report_type, df_d365, df_sc):
         # Insert two columns: "D365 Status" and "Is it the same?"
         ws_sc.insert_cols(insert_after_idx + 1, 2)
 
-        # CRITICAL: Update status column position if it shifted due to insertion
+        # CRITICAL: Update all column positions that shifted due to insertion
         if sc_status_col_idx_orig > insert_after_idx:
             sc_status_col_idx_orig += 2
             sc_status_col_letter = ws_sc.cell(1, sc_status_col_idx_orig).column_letter
+
+        if sc_id_col_idx > insert_after_idx:
+            sc_id_col_idx += 2
+            sc_id_col_letter = ws_sc.cell(1, sc_id_col_idx).column_letter
 
         # Set headers for inserted columns
         ws_sc.cell(1, insert_after_idx + 1, "D365 Status")
@@ -604,7 +608,12 @@ def generate_comparisons():
         print(Messages.processing(report_type))
 
         # Check if files exist in subdirectories
-        d365_file = DYNAMICS_DIR / D365_FILES[report_type]
+        # Use pattern matching first (same as extract_and_save_ids), fall back to hardcoded name
+        d365_file = (
+            find_file_by_pattern(DYNAMICS_DIR, D365_PATTERNS[report_type], "d365")
+            or find_file_by_pattern(DYNAMICS_DIR, D365_PATTERNS[report_type])
+            or DYNAMICS_DIR / D365_FILES[report_type]
+        )
         sc_file = REDASH_DIR / SC_FILES[report_type]
 
         if not d365_file.exists():

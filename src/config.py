@@ -301,4 +301,4 @@ class Messages:
     READ_SC = "Read SC: {count} rows"
     CREATED_FILE = "Created: {filename}"
     FAILED_COMPARISON = "Failed to create comparison"
-    ALL_FILES_FOUND = "All SC files found - Generating comparisons..."
+    ALL_FILES_FOUND = "SC files found - Generating comparisons for uploaded report types..."

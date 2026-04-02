@@ -35,15 +35,18 @@ Other launchers:
 ## Usage — 3-Tab Workflow
 
 ### Tab 1: Upload D365 Files 📁
-1. Drag & drop up to 4 D365 Excel exports (Accreditation, WCB, Client Specific, Critical Document)
+1. Drag & drop **any combination** of D365 Excel exports — Accreditation, WCB, Client Specific, Critical Document, and/or ESG (you don't need all 5)
 2. Files are auto-classified by filename keywords
 3. Click **"Save D365 Files & Proceed"**
 
+> The tool will **only run for the report types you uploaded**. If you upload 2 files, only 2 Redash queries execute and 2 comparison files are generated.
+
 ### Tab 2: Run Comparison 🚀
-1. Click **"Run Full Comparison"** — one button runs the entire pipeline:
-   - **Extract IDs** from D365 files (WCB & Accreditation) → saves SQL-formatted lists to `output/query_ids/`
-   - **Run Redash queries** automatically (injects IDs into saved queries, downloads CSV results)
-   - **Generate comparisons** — creates Excel workbooks + email report
+1. Click **"Run Full Comparison"** — one button runs the entire pipeline **for the uploaded report types only**:
+   - **Detect** which report types have D365 files → builds active types list
+   - **Extract IDs** from D365 files (WCB & Accreditation, if uploaded) → saves SQL-formatted lists to `output/query_ids/`
+   - **Run Redash queries** automatically for active types only (injects IDs into saved queries, downloads CSV results)
+   - **Generate comparisons** — creates Excel workbooks + email report for active types
 2. Console shows real-time progress
 
 ### Tab 3: Results 📊

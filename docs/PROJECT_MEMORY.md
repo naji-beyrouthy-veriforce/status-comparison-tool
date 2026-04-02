@@ -1,5 +1,5 @@
 # Project Memory - Status Comparison Tool
-**Last Updated:** March 16, 2026  
+**Last Updated:** April 2, 2026  
 **Status:** Fully Functional - Automated Redash Integration  
 **Code Quality:** Clean - Technical Debt Resolved
 
@@ -48,26 +48,32 @@ Compare status records between Dynamics 365 (D365) and SafeContractor (SC) for f
 ## Complete Workflow
 
 ### Step 1: Upload D365 Files (GUI Tab 1)
-**Input:** Up to 4 Excel files from Dynamics 365 (not all required)
+**Input:** One or more Excel files from Dynamics 365 (any combination of the 5 report types)
 - `accreditation_d365.xlsx` (18K-23K rows)
 - `wcb_d365.xlsx` (65K-75K rows)
 - `client_d365.xlsx` (26K-32K rows)
 - `critical_document_d365.xlsx`
+- `esg_d365.xlsx`
 
 **Action:** Drag & drop → System auto-classifies by filename patterns → "Save D365 Files" copies to `input/dynamics/`
+
+⚠️ **The tool only runs for the report types you upload.** If you only upload WCB and Client, only those two are processed.
 
 ### Step 2: Automated Pipeline (GUI Tab 2 — "Run Full Comparison")
 **Function:** `run_automated_workflow()` orchestrates 3 sub-steps:
 
-**Step 2a — Extract IDs:** `extract_and_save_ids()`
-1. Reads D365 files (WCB & Accreditation only; Client and Critical Document don't need ID extraction)
+**Detection:** `get_uploaded_report_types()` scans `input/dynamics/` at startup and returns only the report types with files present. All subsequent steps receive this filtered list.
+
+**Step 2a — Extract IDs:** `extract_and_save_ids(report_types=active_types)`
+1. Reads D365 files (WCB & Accreditation only; Client, CD, ESG don't need ID extraction)
+2. Skips any of those two if not in `active_types`
 2. Finds ID column via keywords `("global", "alcumus", "id")`
 3. Extracts UUIDs via compiled regex pattern
 4. Cleans (lowercase, trim), deduplicates, sorts
 5. Formats as SQL: `'uuid1',\n'uuid2',\n'uuid3'`
 6. Saves to `output/query_ids/{wcb,accreditation}_ids.sql.txt`
 
-**Step 2b — Redash Queries:** `run_all_redash_queries()`
+**Step 2b — Redash Queries:** `run_all_redash_queries(report_types=active_types)`
 1. Verifies API connection (requires VPN + `REDASH_API_KEY` env var)
 2. For accreditation/WCB: fetches saved query SQL template → injects extracted IDs into `global_alcumus_id IN (...)` → executes via `POST /api/query_results`
 3. For client: fetches saved query SQL → executes as-is (NO ID injection)
@@ -76,7 +82,7 @@ Compare status records between Dynamics 365 (D365) and SafeContractor (SC) for f
 5. Polls `/api/jobs/{job_id}` until completion
 5. Downloads results as CSV → converts to Excel → saves to `input/redash/`
 
-**Step 2c — Generate Comparisons:** `generate_comparisons()` + `generate_email_report()`
+**Step 2c — Generate Comparisons:** `generate_comparisons(report_types=active_types)` + `generate_email_report()`
 1. Reads D365 + SC files, validates structure
 2. Creates `clean_id` columns (lowercase UUID extraction)
 3. Creates 2-sheet Excel workbooks per report type with XLOOKUP formulas
@@ -99,17 +105,18 @@ Column placement varies by report type:
 - **Client:** Comparison columns inserted after `case` column
 - **Accreditation/WCB/Critical Document:** Comparison columns appended at end
 
-**Output:**
+**Output (example — only uploaded types appear):**
 ```
 output/
 ├── comparison_YYYY-MM-DD/
-│   ├── Accreditation_Comparison.xlsx
-│   ├── WCB_Comparison.xlsx
-│   ├── Client_Comparison.xlsx
-│   └── Critical_Document_Comparison.xlsx
+│   ├── Accreditation_Comparison.xlsx   (if uploaded)
+│   ├── WCB_Comparison.xlsx             (if uploaded)
+│   ├── Client_Comparison.xlsx          (if uploaded)
+│   ├── Critical_Document_Comparison.xlsx (if uploaded)
+│   └── ESG_Comparison.xlsx             (if uploaded)
 ├── query_ids/
-│   ├── accreditation_ids.sql.txt
-│   └── wcb_ids.sql.txt
+│   ├── accreditation_ids.sql.txt       (if uploaded)
+│   └── wcb_ids.sql.txt                 (if uploaded)
 └── email_report.txt
 ```
 
@@ -164,10 +171,11 @@ status_breakdown = not_found_df[status_reason_col].value_counts().to_dict()
 ### main.py
 | Function | Purpose |
 |----------|---------|
-| `extract_and_save_ids()` | Extracts UUIDs from D365 files (WCB/Accreditation only), saves SQL-formatted lists |
+| `get_uploaded_report_types()` | Scans `input/dynamics/` and returns list of report types with D365 files present |
+| `extract_and_save_ids(report_types=None)` | Extracts UUIDs from D365 files (WCB/Accreditation only, filtered to uploaded types) |
 | `create_comparison_excel(report_type, df_d365, df_sc)` | Generates 2-sheet workbooks with XLOOKUP formulas |
-| `generate_comparisons()` | Orchestrates all report type comparisons + triggers email report |
-| `run_automated_workflow()` | Full pipeline: extract IDs → Redash queries → comparisons |
+| `generate_comparisons(report_types=None)` | Orchestrates comparisons for uploaded types + triggers email report |
+| `run_automated_workflow()` | Full pipeline: detect types → extract IDs → Redash queries → comparisons |
 | `main()` | Entry point: automated mode (if API key set) or manual fallback |
 
 ### email_report.py
@@ -206,7 +214,7 @@ status_breakdown = not_found_df[status_reason_col].value_counts().to_dict()
 | `inject_ids_into_sql(sql_text, ids_formatted)` | Regex-replaces IDs in `global_alcumus_id IN (...)` clause |
 | `read_ids_from_file(report_type)` | Reads extracted `.sql.txt` ID files |
 | `run_redash_query(query_id, report_type, ids_formatted)` | Full flow for one query: fetch → inject → execute → download → save |
-| `run_all_redash_queries()` | Orchestrates all 3 queries with error handling |
+| `run_all_redash_queries(report_types=None)` | Orchestrates queries for the given report types (all 5 if None) |
 
 ### gui_app.py (ComparisonApp class)
 | Method | Purpose |
@@ -287,12 +295,13 @@ FILE_SAVE_RETRY_DELAY_SECONDS = 1
 ## Data Flow
 
 ```
-D365 Excel → [Tab 1 Upload] → input/dynamics/
-           → [Tab 2 Run] → extract_and_save_ids() → output/query_ids/*.sql.txt
-                          → run_all_redash_queries() → input/redash/*.xlsx
-                          → generate_comparisons() → output/comparison_YYYY-MM-DD/*.xlsx
-                          → generate_email_report() → output/email_report.txt
-           → [Tab 3 Results] → Email report display + clipboard copy
+D365 Excel(s) → [Tab 1 Upload] → input/dynamics/  (any subset of 5 types)
+             → [Tab 2 Run] → get_uploaded_report_types() → active_types list
+                           → extract_and_save_ids(active_types) → output/query_ids/*.sql.txt
+                           → run_all_redash_queries(active_types) → input/redash/*.xlsx
+                           → generate_comparisons(active_types) → output/comparison_YYYY-MM-DD/*.xlsx
+                           → generate_email_report() → output/email_report.txt
+             → [Tab 3 Results] → Email report display + clipboard copy
 ```
 
 ---
@@ -337,7 +346,7 @@ status-comparaison-tool/
 6. **Flexible Pattern Matching** — keyword-based detection for files and columns handles naming inconsistencies
 7. **Background Threading** — GUI stays responsive during long operations via `threading.Thread(daemon=True)`
 8. **Centralized Config** — all constants, messages, and patterns in `config.py`; no magic strings in business logic
-9. **Partial File Support** — any combination of report types works; missing files are skipped gracefully
+9. **Partial File Support** — `get_uploaded_report_types()` detects which D365 files are present; only those types flow through extract → Redash → compare; the tool works with any 1–5 file combination
 10. **File Save Retry** — locked files retry 3 times, then save with timestamp suffix as fallback
 
 ---

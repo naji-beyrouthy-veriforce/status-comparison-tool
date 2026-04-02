@@ -341,9 +341,9 @@ def run_redash_query(query_id, report_type, ids_formatted=None):
 # ORCHESTRATION — ALL QUERIES
 # ============================================================================
 
-def run_all_redash_queries():
+def run_all_redash_queries(report_types=None):
     """
-    Execute all 5 Redash queries and download results.
+    Execute Redash queries for the specified report types and download results.
 
     - Accreditation (1460): Injects extracted IDs → execute → download (includes created_at, updated_at)
     - WCB (1281): Injects extracted IDs → execute → download
@@ -351,9 +351,14 @@ def run_all_redash_queries():
     - Critical Document (1464): Execute as-is → download (NO modification)
     - ESG (1465): Execute as-is → download (NO modification)
 
+    Args:
+        report_types: List of report types to run, or None to run all 5
+
     Returns:
         dict: {report_type: output_path} for successful downloads
     """
+    active_types = report_types if report_types is not None else ["accreditation", "wcb", "client", "critical_document", "esg"]
+
     print("\n" + "=" * 70)
     print("REDASH: EXECUTING QUERIES & DOWNLOADING RESULTS")
     print("=" * 70)
@@ -370,6 +375,8 @@ def run_all_redash_queries():
 
     # --- Accreditation & WCB: inject IDs, execute, download ---
     for report_type in ["accreditation", "wcb"]:
+        if report_type not in active_types:
+            continue
         print(f"\n{Messages.PROCESSING} Processing {report_type.upper()}...")
 
         ids_formatted = read_ids_from_file(report_type)
@@ -389,49 +396,28 @@ def run_all_redash_queries():
             logger.error(f"Failed {report_type.upper()} Redash query: {e}")
             continue
 
-    # --- Client: execute as-is, download (NO modification) ---
-    print(f"\n{Messages.PROCESSING} Processing CLIENT...")
-
-    try:
-        query_id = REDASH_QUERY_IDS["client"]
-        output_path = run_redash_query(query_id, "client")
-        if output_path:
-            results["client"] = output_path
-    except Exception as e:
-        print(f"  {Messages.ERROR} Failed to process client: {e}")
-        logger.error(f"Failed client Redash query: {e}")
-
-    # --- Critical Document: execute as-is, download (NO modification) ---
-    print(f"\n{Messages.PROCESSING} Processing CRITICAL DOCUMENT...")
-
-    try:
-        query_id = REDASH_QUERY_IDS["critical_document"]
-        output_path = run_redash_query(query_id, "critical_document")
-        if output_path:
-            results["critical_document"] = output_path
-    except Exception as e:
-        print(f"  {Messages.ERROR} Failed to process critical_document: {e}")
-        logger.error(f"Failed critical_document Redash query: {e}")
-
-    # --- ESG: execute as-is, download (NO modification) ---
-    print(f"\n{Messages.PROCESSING} Processing ESG...")
-
-    try:
-        query_id = REDASH_QUERY_IDS["esg"]
-        output_path = run_redash_query(query_id, "esg")
-        if output_path:
-            results["esg"] = output_path
-    except Exception as e:
-        print(f"  {Messages.ERROR} Failed to process ESG: {e}")
-        logger.error(f"Failed ESG Redash query: {e}")
+    # --- Client, Critical Document, ESG: execute as-is, download (NO modification) ---
+    for report_type in ["client", "critical_document", "esg"]:
+        if report_type not in active_types:
+            continue
+        display = REPORT_TYPE_DISPLAY_NAMES.get(report_type, report_type.title())
+        print(f"\n{Messages.PROCESSING} Processing {display.upper()}...")
+        try:
+            query_id = REDASH_QUERY_IDS[report_type]
+            output_path = run_redash_query(query_id, report_type)
+            if output_path:
+                results[report_type] = output_path
+        except Exception as e:
+            print(f"  {Messages.ERROR} Failed to process {display}: {e}")
+            logger.error(f"Failed {display} Redash query: {e}")
 
     # --- Summary ---
     print("\n" + "-" * 40)
-    print(f"Downloaded {len(results)}/5 Redash results:")
+    print(f"Downloaded {len(results)}/{len(active_types)} Redash results:")
     for rt, path in results.items():
         print(f"  {Messages.SUCCESS} {REPORT_TYPE_DISPLAY_NAMES.get(rt, rt.title())}: {path.name}")
 
-    missing = {"accreditation", "wcb", "client", "critical_document", "esg"} - set(results.keys())
+    missing = set(active_types) - set(results.keys())
     for rt in sorted(missing):
         print(f"  {Messages.ERROR} {REPORT_TYPE_DISPLAY_NAMES.get(rt, rt.title())}: Failed")
 

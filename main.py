@@ -79,7 +79,23 @@ except ImportError:
     run_all_redash_queries = None
 
 
-def extract_and_save_ids():
+def get_uploaded_report_types():
+    """
+    Detect which report types have D365 files present in DYNAMICS_DIR.
+    Returns a list of report type keys for uploaded files only.
+    """
+    active = []
+    for report_type in REPORT_TYPES:
+        file_path = (
+            find_file_by_pattern(DYNAMICS_DIR, D365_PATTERNS[report_type], "d365")
+            or find_file_by_pattern(DYNAMICS_DIR, D365_PATTERNS[report_type])
+        )
+        if file_path:
+            active.append(report_type)
+    return active
+
+
+def extract_and_save_ids(report_types=None):
     """
     Step 1: Extract IDs from D365 files and save SQL-ready lists
     """
@@ -90,8 +106,9 @@ def extract_and_save_ids():
     print("STEP 1: EXTRACTING IDs FROM D365 FILES")
     print("=" * 70)
 
-    # Process Accreditation and WCB only (Client doesn't need ID extraction)
-    for report_type in ["accreditation", "wcb"]:
+    # Process Accreditation and WCB only (Client/CD/ESG don't need ID extraction)
+    id_types = [t for t in ["accreditation", "wcb"] if report_types is None or t in report_types]
+    for report_type in id_types:
         logger.info(f"Processing {report_type} for ID extraction")
         print(Messages.processing(report_type))
 
@@ -590,7 +607,7 @@ def create_comparison_excel(report_type, df_d365, df_sc):
     return output_file
 
 
-def generate_comparisons():
+def generate_comparisons(report_types=None):
     """
     Step 2: Generate comparison Excel files
     """
@@ -603,7 +620,8 @@ def generate_comparisons():
 
     success_count = 0
 
-    for report_type in REPORT_TYPES:
+    active_types = report_types if report_types is not None else REPORT_TYPES
+    for report_type in active_types:
         logger.info(f"Processing comparison for {report_type}")
         print(Messages.processing(report_type))
 
@@ -737,14 +755,24 @@ def run_automated_workflow():
     print("AUTOMATED WORKFLOW: D365 vs SafeContractor Comparison")
     print("=" * 70)
 
+    # Detect which report types have D365 files uploaded
+    active_types = get_uploaded_report_types()
+    if not active_types:
+        print(f"\n{Messages.WARNING} No D365 files found in input/dynamics/")
+        return
+
+    display_names = ", ".join(REPORT_TYPE_DISPLAY_NAMES.get(t, t.title()) for t in active_types)
+    print(f"\n📋 Running comparison for: {display_names}")
+    logger.info(f"Active report types: {active_types}")
+
     # Step 1: Extract IDs from D365 files (existing function)
     print("\n📋 STEP 1/3: Extracting IDs from D365 files...")
-    extract_and_save_ids()
+    extract_and_save_ids(report_types=active_types)
 
     # Step 2: Run Redash queries automatically (new)
     print("\n📡 STEP 2/3: Running Redash queries...")
     try:
-        redash_results = run_all_redash_queries()
+        redash_results = run_all_redash_queries(report_types=active_types)
     except Exception as e:
         logger.error(f"Redash automation failed: {e}")
         print(f"\n{Messages.ERROR} Redash automation failed: {e}")
@@ -761,7 +789,7 @@ def run_automated_workflow():
 
     # Step 3: Generate comparisons (existing function)
     print("\n📊 STEP 3/3: Generating comparison files...")
-    generate_comparisons()
+    generate_comparisons(report_types=active_types)
 
     print("\n" + "=" * 70)
     print("✅ AUTOMATED WORKFLOW COMPLETE!")
@@ -801,16 +829,17 @@ def main():
         print("Manual Workflow Mode")
         print("=" * 70)
 
+        active_types = get_uploaded_report_types()
         sc_files_exist = any(
-            find_file_by_pattern(REDASH_DIR, SC_PATTERNS[t]) is not None for t in REPORT_TYPES
-        )
+            find_file_by_pattern(REDASH_DIR, SC_PATTERNS[t]) is not None for t in active_types
+        ) if active_types else False
 
         if sc_files_exist:
             print(f"\n{Messages.ALL_FILES_FOUND}")
-            generate_comparisons()
+            generate_comparisons(report_types=active_types)
         else:
             print(f"\n{Messages.WARNING} SC files not found - Starting with ID extraction...")
-            extract_and_save_ids()
+            extract_and_save_ids(report_types=active_types)
 
 
 if __name__ == "__main__":

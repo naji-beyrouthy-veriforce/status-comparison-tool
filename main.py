@@ -856,17 +856,24 @@ def main():
         print("Automated Mode (Redash API)")
         print("=" * 70)
 
-        # Check if D365 files exist
+        # If D365 auto-download is configured, always run the workflow
+        # (run_automated_workflow will handle the download as Step 0)
+        # Otherwise, require D365 files to already exist in input/dynamics/
+        d365_auto_enabled = bool(
+            D365_TENANT_ID and D365_CLIENT_ID and D365_CLIENT_SECRET
+            and run_all_d365_downloads
+        )
         d365_files_exist = any(
             find_file_by_pattern(DYNAMICS_DIR, D365_PATTERNS[t]) is not None
             for t in REPORT_TYPES
         )
 
-        if d365_files_exist:
+        if d365_auto_enabled or d365_files_exist:
             run_automated_workflow()
         else:
             print(f"\n{Messages.WARNING} No D365 files found in input/dynamics/")
-            print("Upload D365 files first, then run again.")
+            print("Either configure D365 credentials for auto-download,")
+            print("or upload D365 files manually via the GUI and run again.")
     else:
         # Manual mode (original behavior)
         logger.info("Starting Status Comparison Tool - Manual Workflow Mode")

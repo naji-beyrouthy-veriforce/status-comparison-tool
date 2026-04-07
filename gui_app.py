@@ -636,12 +636,14 @@ class ComparisonApp:
                 # Green dot for uploaded
                 indicator.delete("all")
                 indicator.create_oval(2, 2, 8, 8, fill=self.colors['accent_green'], outline="")
-                label.config(text=f"{report_type.replace('_', ' ').title()}: ✓ Uploaded", fg=self.colors['text_primary'])
+                display = REPORT_TYPE_DISPLAY_NAMES.get(report_type, report_type.replace('_', ' ').title())
+                label.config(text=f"{display}: ✓ Uploaded", fg=self.colors['text_primary'])
             else:
                 # Gray dot for not uploaded
                 indicator.delete("all")
                 indicator.create_oval(2, 2, 8, 8, fill="#6b7280", outline="")
-                label.config(text=f"{report_type.replace('_', ' ').title()}: Not uploaded", fg=self.colors['text_secondary'])
+                display = REPORT_TYPE_DISPLAY_NAMES.get(report_type, report_type.replace('_', ' ').title())
+                label.config(text=f"{display}: Not uploaded", fg=self.colors['text_secondary'])
             
             # Force UI update
             indicator.update_idletasks()

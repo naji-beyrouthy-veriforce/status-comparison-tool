@@ -19,7 +19,7 @@ import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
 
 # Import configuration and utilities
-from src.config import INPUT_DIR, OUTPUT_DIR, DYNAMICS_DIR, REDASH_DIR, QUERY_IDS_DIR, D365_FILES, SC_FILES, REDASH_API_KEY, D365_PATTERNS, SC_PATTERNS, ALLOWED_FILE_EXTENSIONS, Messages, setup_logging, get_dated_comparison_dir, REPORT_TYPE_DISPLAY_NAMES
+from src.config import INPUT_DIR, OUTPUT_DIR, DYNAMICS_DIR, REDASH_DIR, QUERY_IDS_DIR, D365_FILES, SC_FILES, REDASH_API_KEY, D365_TENANT_ID, D365_CLIENT_ID, D365_CLIENT_SECRET, D365_VIEW_IDS, D365_PATTERNS, SC_PATTERNS, ALLOWED_FILE_EXTENSIONS, Messages, setup_logging, get_dated_comparison_dir, REPORT_TYPE_DISPLAY_NAMES
 
 # Import main processing functions
 from main import extract_and_save_ids, generate_comparisons, run_automated_workflow
@@ -265,7 +265,7 @@ class ComparisonApp:
             justify=tk.LEFT,
         ).pack(anchor=tk.W, padx=20, pady=(0, 10))
 
-        # API key status indicator
+        # Redash API key status
         api_status = "✓ Redash API key configured" if REDASH_API_KEY else "❌ REDASH_API_KEY environment variable not set"
         api_color = self.colors['accent_green'] if REDASH_API_KEY else "#ef4444"
         tk.Label(
@@ -273,6 +273,26 @@ class ComparisonApp:
             text=api_status,
             bg=self.colors['bg_card'],
             fg=api_color,
+            font=("Segoe UI", 9),
+        ).pack(anchor=tk.W, padx=20, pady=(0, 4))
+
+        # D365 API status
+        d365_creds_ok = bool(D365_TENANT_ID and D365_CLIENT_ID and D365_CLIENT_SECRET)
+        d365_views_ok = any(vid for vid in D365_VIEW_IDS.values())
+        if d365_creds_ok and d365_views_ok:
+            d365_status = "✓ D365 API configured — files will be downloaded automatically"
+            d365_color = self.colors['accent_green']
+        elif d365_creds_ok:
+            d365_status = "⚠ D365 credentials set but no view IDs configured — D365 download skipped"
+            d365_color = self.colors['accent_orange']
+        else:
+            d365_status = "ℹ D365 credentials not set — upload D365 files manually via Tab 1"
+            d365_color = self.colors['text_secondary']
+        tk.Label(
+            info_frame,
+            text=d365_status,
+            bg=self.colors['bg_card'],
+            fg=d365_color,
             font=("Segoe UI", 9),
         ).pack(anchor=tk.W, padx=20, pady=(0, 15))
 

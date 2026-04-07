@@ -41,6 +41,9 @@ from src.config import (
     CASE_COLUMN_REPORT_TYPES,
     REPORT_TYPE_DISPLAY_NAMES,
     REDASH_API_KEY,
+    D365_TENANT_ID,
+    D365_CLIENT_ID,
+    D365_CLIENT_SECRET,
     Messages,
     setup_logging,
     get_dated_comparison_dir,
@@ -77,6 +80,13 @@ try:
 except ImportError:
     logger.warning("Could not import Redash API module")
     run_all_redash_queries = None
+
+# Import D365 API (optional - only needed for automated D365 download)
+try:
+    from src.dynamics_api import run_all_d365_downloads
+except ImportError:
+    logger.warning("Could not import D365 API module")
+    run_all_d365_downloads = None
 
 
 def get_uploaded_report_types():
@@ -745,17 +755,50 @@ def generate_comparisons(report_types=None):
 
 def run_automated_workflow():
     """
-    Automated workflow: Extract IDs → Redash queries → Generate comparisons.
-    All steps run automatically — no manual Redash intervention needed.
-    
-    Requires REDASH_API_KEY environment variable to be set.
+    Automated workflow: (Optional D365 download →) Extract IDs → Redash queries → Generate comparisons.
+
+    If D365_TENANT_ID, D365_CLIENT_ID, and D365_CLIENT_SECRET are all set,
+    D365 files are downloaded automatically as Step 1 before ID extraction.
+    Otherwise, existing files in input/dynamics/ are used (upload manually via Tab 1).
+
+    Always requires REDASH_API_KEY to be set.
     """
     logger.info("Starting Automated Workflow")
+
+    # Determine if the optional D365 automated download step is active
+    d365_enabled = bool(
+        D365_TENANT_ID and D365_CLIENT_ID and D365_CLIENT_SECRET
+        and run_all_d365_downloads
+    )
+    total_steps = 4 if d365_enabled else 3
+    step = 0
+
     print("\n" + "=" * 70)
     print("AUTOMATED WORKFLOW: D365 vs SafeContractor Comparison")
     print("=" * 70)
 
-    # Detect which report types have D365 files uploaded
+    # ── STEP 0 (optional): Download D365 files automatically ──────────────
+    if d365_enabled:
+        step += 1
+        print(f"\n📥 STEP {step}/{total_steps}: Downloading D365 files from Dynamics 365...")
+        try:
+            d365_dl_results = run_all_d365_downloads()
+            if not d365_dl_results:
+                print(
+                    f"  {Messages.WARNING} No D365 files downloaded — "
+                    "using existing files in input/dynamics/"
+                )
+        except Exception as e:
+            logger.error(f"D365 download failed: {e}")
+            print(f"\n  {Messages.WARNING} D365 download failed: {e}")
+            print("  Falling back to existing files in input/dynamics/")
+    else:
+        print(
+            "\n  ℹ️  D365 automated download not configured — "
+            "using existing files in input/dynamics/"
+        )
+
+    # Detect which report types have D365 files present (after optional download)
     active_types = get_uploaded_report_types()
     if not active_types:
         print(f"\n{Messages.WARNING} No D365 files found in input/dynamics/")
@@ -765,12 +808,14 @@ def run_automated_workflow():
     print(f"\n📋 Running comparison for: {display_names}")
     logger.info(f"Active report types: {active_types}")
 
-    # Step 1: Extract IDs from D365 files (existing function)
-    print("\n📋 STEP 1/3: Extracting IDs from D365 files...")
+    # ── STEP 1: Extract IDs from D365 files ───────────────────────────────
+    step += 1
+    print(f"\n📋 STEP {step}/{total_steps}: Extracting IDs from D365 files...")
     extract_and_save_ids(report_types=active_types)
 
-    # Step 2: Run Redash queries automatically (new)
-    print("\n📡 STEP 2/3: Running Redash queries...")
+    # ── STEP 2: Run Redash queries ─────────────────────────────────────────
+    step += 1
+    print(f"\n📡 STEP {step}/{total_steps}: Running Redash queries...")
     try:
         redash_results = run_all_redash_queries(report_types=active_types)
     except Exception as e:
@@ -787,8 +832,9 @@ def run_automated_workflow():
         print(f"\n{Messages.ERROR} No Redash results downloaded. Cannot proceed.")
         return
 
-    # Step 3: Generate comparisons (existing function)
-    print("\n📊 STEP 3/3: Generating comparison files...")
+    # ── STEP 3: Generate comparisons ──────────────────────────────────────
+    step += 1
+    print(f"\n📊 STEP {step}/{total_steps}: Generating comparison files...")
     generate_comparisons(report_types=active_types)
 
     print("\n" + "=" * 70)

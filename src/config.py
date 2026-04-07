@@ -161,6 +161,52 @@ REDASH_POLL_INTERVAL = 3    # seconds between status checks
 REDASH_POLL_TIMEOUT = 300   # 5 minutes max wait
 
 # ============================================================================
+# DYNAMICS 365 WEB API CONFIGURATION
+# ============================================================================
+D365_ORG_URL = "https://alcumusprod.crm4.dynamics.com"
+
+# OAuth2 credentials — set via environment variables (set in .bat launchers)
+# IT must create an Azure App Registration and assign it a D365 Security Role
+D365_TENANT_ID     = os.environ.get("D365_TENANT_ID", "")
+D365_CLIENT_ID     = os.environ.get("D365_CLIENT_ID", "")
+D365_CLIENT_SECRET = os.environ.get("D365_CLIENT_SECRET", "")
+
+# D365 entity names for the incident table
+D365_ENTITY              = "incidents"  # OData entity set name (plural, used in URLs)
+D365_ENTITY_LOGICAL_NAME = "incident"   # Logical name (singular, used in metadata queries)
+
+D365_API_VERSION = "v9.2"
+
+# Saved view IDs for each report type.
+# Set as environment variables OR replace the empty strings directly once known.
+# To find a view ID: open the view in D365 → copy the viewid= value from the URL.
+#
+# View IDs confirmed April 2026
+D365_VIEW_IDS = {
+    "accreditation":     os.environ.get("D365_VIEW_ID_ACCREDITATION", "2102f6c1-4411-f011-998a-000d3ab02833"),
+    "wcb":               os.environ.get("D365_VIEW_ID_WCB",           "06e9e4df-4411-f011-998a-000d3ab02833"),
+    "client":            os.environ.get("D365_VIEW_ID_CLIENT",         "4b79190b-4511-f011-998a-000d3ab02833"),
+    "critical_document": os.environ.get("D365_VIEW_ID_CRITICAL_DOCUMENT", "a007b506-6e27-f111-8342-7ced8d421558"),
+    "esg":               os.environ.get("D365_VIEW_ID_ESG",            "990883d8-4b28-f111-8342-0022489c5458"),
+}
+
+# D365 returns up to 5000 records per page; pagination follows @odata.nextLink
+D365_PAGE_SIZE = 5000
+
+# Fallback display names for well-known D365 schema field names.
+# Used when the metadata API cannot resolve a display name — ensures that
+# critical fields like 'statuscode' are always renamed to 'Status Reason'.
+D365_KNOWN_FIELD_NAMES = {
+    "statuscode":   "Status Reason",
+    "statecode":    "Status",
+    "createdon":    "Created On",
+    "modifiedon":   "Modified On",
+    "incidentid":   "Case",
+    "ticketnumber": "Case Number",
+    "title":        "Case Title",
+}
+
+# ============================================================================
 # LOGGING CONFIGURATION
 # ============================================================================
 # Log file settings

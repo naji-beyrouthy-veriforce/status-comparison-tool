@@ -45,7 +45,8 @@ D365_PATTERNS = {
     "esg": "esg",  # ESG
 }
 
-SC_PATTERNS = {"accreditation": "accreditation", "wcb": "wcb", "client": ["client", "cs"], "critical_document": ["critical", "cd"], "esg": "esg"}
+# SC files follow the same naming patterns as D365 files
+SC_PATTERNS = D365_PATTERNS
 
 # Backwards compatibility - default filenames
 D365_FILES = {

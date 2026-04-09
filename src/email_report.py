@@ -16,7 +16,7 @@ import sys
 from datetime import datetime
 
 # Import configuration
-from .config import OUTPUT_DIR, setup_logging, get_dated_comparison_dir
+from .config import OUTPUT_DIR, setup_logging, get_dated_comparison_dir, REPORT_TYPES, REPORT_TYPE_DISPLAY_NAMES
 
 # Import utilities  
 from .utils import find_sc_status_column, find_column_by_keywords
@@ -257,13 +257,11 @@ def generate_email_report():
     # Get the dated comparison directory
     comparison_dir = get_dated_comparison_dir()
     
-    # Define comparison types and their file paths
+    # Define comparison types and their file paths — derived from central config
+    # so adding a new report type to REPORT_TYPES is automatically picked up here
     comparisons = {
-        "Client": comparison_dir / "Client_Comparison.xlsx",
-        "WCB": comparison_dir / "WCB_Comparison.xlsx",
-        "Accreditation": comparison_dir / "Accreditation_Comparison.xlsx",
-        "Critical_Document": comparison_dir / "Critical_Document_Comparison.xlsx",
-        "ESG": comparison_dir / "ESG_Comparison.xlsx"
+        REPORT_TYPE_DISPLAY_NAMES[rt]: comparison_dir / f"{REPORT_TYPE_DISPLAY_NAMES[rt]}_Comparison.xlsx"
+        for rt in REPORT_TYPES
     }
     
     # Check which files exist
@@ -336,9 +334,15 @@ def generate_email_report():
     
     email_lines = []
     
-    # Process in the order: ESG, Critical_Document, Client, WCB, Accreditation
-    order = ["ESG", "Critical_Document", "Client", "WCB", "Accreditation"]
+    # Process in reverse config order (ESG → Critical_Document → Client → WCB → Accreditation)
+    order = [REPORT_TYPE_DISPLAY_NAMES[rt] for rt in reversed(REPORT_TYPES)]
     
+    # Email-specific section headers (may differ from file/config display names)
+    _email_section_names = {
+        "Client": "Client Specific",
+        "Critical_Document": "Critical Document",
+    }
+
     for name in order:
         if name not in results:
             continue
@@ -346,14 +350,7 @@ def generate_email_report():
         data = results[name]
         
         # Section header with display name
-        if name == "Client":
-            display_name = "Client Specific"
-        elif name == "Critical_Document":
-            display_name = "Critical Document"
-        elif name == "ESG":
-            display_name = "ESG"
-        else:
-            display_name = name
+        display_name = _email_section_names.get(name, name)
         
         # Add blank line between sections (not before the first one)
         if email_lines:

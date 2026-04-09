@@ -19,7 +19,7 @@ import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
 
 # Import configuration and utilities
-from src.config import INPUT_DIR, OUTPUT_DIR, DYNAMICS_DIR, REDASH_DIR, QUERY_IDS_DIR, D365_FILES, SC_FILES, REDASH_API_KEY, D365_TENANT_ID, D365_CLIENT_ID, D365_CLIENT_SECRET, D365_VIEW_IDS, D365_PATTERNS, SC_PATTERNS, ALLOWED_FILE_EXTENSIONS, Messages, setup_logging, get_dated_comparison_dir, REPORT_TYPE_DISPLAY_NAMES
+from src.config import OUTPUT_DIR, DYNAMICS_DIR, REDASH_DIR, D365_FILES, SC_FILES, REDASH_API_KEY, D365_TENANT_ID, D365_CLIENT_ID, D365_CLIENT_SECRET, D365_VIEW_IDS, D365_PATTERNS, ALLOWED_FILE_EXTENSIONS, Messages, setup_logging, get_dated_comparison_dir, REPORT_TYPE_DISPLAY_NAMES
 
 # Import main processing functions
 from main import extract_and_save_ids, generate_comparisons, run_automated_workflow
@@ -183,8 +183,8 @@ class ComparisonApp:
         # Configure drag and drop
         bulk_drop.drop_target_register(DND_FILES)
         bulk_drop.dnd_bind("<<Drop>>", lambda e: self.handle_bulk_drop(e, "d365"))
-        bulk_drop.dnd_bind("<<DragEnter>>", lambda e, f=bulk_drop: self.on_drag_enter(e, f, "d365"))
-        bulk_drop.dnd_bind("<<DragLeave>>", lambda e, f=bulk_drop: self.on_drag_leave(e, f, "d365"))
+        bulk_drop.dnd_bind("<<DragEnter>>", lambda e, f=bulk_drop: self.on_drag_enter(e, f))
+        bulk_drop.dnd_bind("<<DragLeave>>", lambda e, f=bulk_drop: self.on_drag_leave(e, f))
 
         tk.Label(
             bulk_drop,
@@ -452,7 +452,7 @@ class ComparisonApp:
         Returns the key (e.g., 'accreditation_d365') or None if can't classify
         """
         filename_lower = Path(file_path).name.lower()
-        patterns = D365_PATTERNS if file_type_suffix == "d365" else SC_PATTERNS
+        patterns = D365_PATTERNS
 
         # Try to match against each pattern
         for report_type, pattern_list in patterns.items():
@@ -612,11 +612,11 @@ class ComparisonApp:
         
         return file_paths
 
-    def on_drag_enter(self, event, frame, file_type):
+    def on_drag_enter(self, event, frame):
         """Visual feedback when dragging over drop zone"""
         frame.config(bg="#3b5a7f")
 
-    def on_drag_leave(self, event, frame, file_type):
+    def on_drag_leave(self, event, frame):
         """Reset visual when leaving drop zone"""
         frame.config(bg="#2a3f5f")
 

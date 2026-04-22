@@ -23,37 +23,55 @@ QUERY_IDS_DIR = OUTPUT_DIR / "query_ids"
 LOG_DIR = BASE_DIR / "logs"
 
 # Module-level cache so every call within a single run returns the same folder.
-# Reset at the start of each new run via reset_run_comparison_dir().
+# Call reset_run_comparison_dir() at the very start of each new workflow run.
 _current_run_comparison_dir = None
 
 
 def reset_run_comparison_dir():
     """
-    Reset the run-scoped comparison directory cache.
-    Call this once at the very start of each new workflow run so a fresh
-    timestamped folder is generated for that run.
+    Stamp a fresh timestamped comparison folder for this run and cache it.
+    Call once at the very start of each new workflow run (run_automated_workflow).
+    Subsequent calls to get_dated_comparison_dir() within the same run will
+    return this same folder.
     """
     global _current_run_comparison_dir
-    _current_run_comparison_dir = None
+    date_stamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    _current_run_comparison_dir = OUTPUT_DIR / f"comparison_{date_stamp}"
 
 
 def get_dated_comparison_dir():
     """
     Get the comparison directory for the current run.
-    Creates a folder like: output/comparison_2026-04-22_14-30-45/
 
-    The path is cached after the first call so all steps of a single run
-    write to the same folder.  Call reset_run_comparison_dir() at the start
-    of each new run to get a fresh timestamped folder.
+    Behaviour:
+    - Automated workflow: reset_run_comparison_dir() was called at run start,
+      so the cache is already set.  All steps write to the same folder.
+    - Standalone mode (e.g. Run_Email_Report.bat, fresh Python process):
+      cache is None → finds the most-recently-modified comparison_* folder
+      in output/.  Falls back to a new timestamped folder if none exist.
 
     Returns:
         Path: Path to the current run's comparison folder
     """
     global _current_run_comparison_dir
     if _current_run_comparison_dir is None:
-        date_stamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        _current_run_comparison_dir = OUTPUT_DIR / f"comparison_{date_stamp}"
+        # Standalone mode: use the most recent existing comparison folder
+        if OUTPUT_DIR.exists():
+            existing = sorted(
+                OUTPUT_DIR.glob("comparison_*"),
+                key=lambda p: p.stat().st_mtime,
+                reverse=True,
+            )
+            if existing:
+                _current_run_comparison_dir = existing[0]
+
+        # No existing folder found — create a new timestamped one
+        if _current_run_comparison_dir is None:
+            date_stamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            _current_run_comparison_dir = OUTPUT_DIR / f"comparison_{date_stamp}"
+
     return _current_run_comparison_dir
+
 
 # ============================================================================
 # FILE PATTERNS FOR AUTO-DETECTION

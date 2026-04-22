@@ -11,8 +11,6 @@ Manual verification process replicated:
 """
 
 import pandas as pd
-from pathlib import Path
-import sys
 from datetime import datetime
 
 # Import configuration
@@ -465,4 +463,5 @@ def main():
 
 
 if __name__ == "__main__":
+    import sys
     sys.exit(main())

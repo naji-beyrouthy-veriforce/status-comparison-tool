@@ -22,16 +22,38 @@ REDASH_DIR = INPUT_DIR / "redash"
 QUERY_IDS_DIR = OUTPUT_DIR / "query_ids"
 LOG_DIR = BASE_DIR / "logs"
 
+# Module-level cache so every call within a single run returns the same folder.
+# Reset at the start of each new run via reset_run_comparison_dir().
+_current_run_comparison_dir = None
+
+
+def reset_run_comparison_dir():
+    """
+    Reset the run-scoped comparison directory cache.
+    Call this once at the very start of each new workflow run so a fresh
+    timestamped folder is generated for that run.
+    """
+    global _current_run_comparison_dir
+    _current_run_comparison_dir = None
+
+
 def get_dated_comparison_dir():
     """
-    Get the dated comparison directory for today's comparisons.
-    Creates a folder like: output/comparison_2026-02-18/
-    
+    Get the comparison directory for the current run.
+    Creates a folder like: output/comparison_2026-04-22_14-30-45/
+
+    The path is cached after the first call so all steps of a single run
+    write to the same folder.  Call reset_run_comparison_dir() at the start
+    of each new run to get a fresh timestamped folder.
+
     Returns:
-        Path: Path to today's dated comparison folder
+        Path: Path to the current run's comparison folder
     """
-    date_stamp = datetime.now().strftime("%Y-%m-%d")
-    return OUTPUT_DIR / f"comparison_{date_stamp}"
+    global _current_run_comparison_dir
+    if _current_run_comparison_dir is None:
+        date_stamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        _current_run_comparison_dir = OUTPUT_DIR / f"comparison_{date_stamp}"
+    return _current_run_comparison_dir
 
 # ============================================================================
 # FILE PATTERNS FOR AUTO-DETECTION

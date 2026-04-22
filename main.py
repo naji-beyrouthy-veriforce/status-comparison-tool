@@ -47,6 +47,7 @@ from src.config import (
     Messages,
     setup_logging,
     get_dated_comparison_dir,
+    reset_run_comparison_dir,
 )
 
 # Setup logging
@@ -764,6 +765,9 @@ def run_automated_workflow():
     Always requires REDASH_API_KEY to be set.
     """
     logger.info("Starting Automated Workflow")
+
+    # Reset the run-scoped comparison directory so this run gets a fresh timestamped folder
+    reset_run_comparison_dir()
 
     # Determine if the optional D365 automated download step is active
     d365_enabled = bool(

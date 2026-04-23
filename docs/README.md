@@ -5,8 +5,9 @@ Automated desktop application for comparing Dynamics 365 and SafeContractor stat
 ## Features
 
 - Dark-themed GUI with drag & drop file upload (ttkbootstrap)
-- Auto-detection and classification of Accreditation, WCB, Client, and Critical Document files
+- Auto-detection and classification of Accreditation, WCB, Client, Critical Document, and ESG files
 - Automated Redash API integration — extracts IDs, runs queries, downloads results
+- Optional automated D365 download via the Dynamics 365 Web API (requires Azure App Registration)
 - Two-sheet Excel comparisons with XLOOKUP formulas and red-highlighted headers
 - Auto-generated email report with status difference breakdowns
 - Auto-cleanup of uploaded files on app close
@@ -19,9 +20,28 @@ Automated desktop application for comparing Dynamics 365 and SafeContractor stat
 pip install -r requirements.txt
 ```
 
-Requires VPN connection and `REDASH_API_KEY` environment variable for automated Redash queries (set automatically by the batch launchers).
+### 1. Configure secrets
 
-### Run
+Copy the template and fill in your API keys:
+
+```bat
+copy secrets.env.template secrets.env
+```
+
+Then open `secrets.env` and fill in:
+
+```env
+REDASH_API_KEY=your-redash-api-key-here
+
+# Optional — enables automatic D365 file download (contact IT for these values)
+D365_TENANT_ID=
+D365_CLIENT_ID=
+D365_CLIENT_SECRET=
+```
+
+`secrets.env` is gitignored and will never be committed. The `.bat` launchers load it automatically.
+
+### 2. Run
 
 Double-click `Run_GUI.bat` or:
 ```bash

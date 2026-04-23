@@ -11,12 +11,10 @@ Manual verification process replicated:
 """
 
 import pandas as pd
-from pathlib import Path
-import sys
 from datetime import datetime
 
 # Import configuration
-from .config import OUTPUT_DIR, setup_logging, get_dated_comparison_dir
+from .config import OUTPUT_DIR, setup_logging, get_dated_comparison_dir, REPORT_TYPES, REPORT_TYPE_DISPLAY_NAMES
 
 # Import utilities  
 from .utils import find_sc_status_column, find_column_by_keywords
@@ -124,18 +122,51 @@ def analyze_sc_sheet(df_sc, df_d365, report_type="client"):
     
     # Count "Not found" (SC records with no matching D365 record)
     not_found = merged[d365_status_col_merged].isna().sum()
-    
-    # Count differences (replicate "Is it the same?" formula: =sc_status=d365_status)
-    valid_rows = merged[d365_status_col_merged].notna()
-    if valid_rows.any():
-        sc_statuses = merged.loc[valid_rows, sc_status_col_merged].fillna("").astype(str)
-        d365_statuses = merged.loc[valid_rows, d365_status_col_merged].fillna("").astype(str)
-        differences = (sc_statuses != d365_statuses).sum()
+
+    # For client report: apply special filtering before counting differences
+    # - Keep only rows where contractor_status == "Active" AND client_status == "Active"
+    # - Filter OUT rows where SC status (case) == "Cancelled" OR D365 status == "Cancelled"
+    if report_type.lower() == "client":
+        contractor_col = next((c for c in merged.columns if c.lower() == "contractor_status"), None)
+        client_col = next((c for c in merged.columns if c.lower() == "client_status"), None)
+
+        # Start from all rows (including "not found") so they count as differences
+        analysis_rows = pd.Series([True] * len(merged), index=merged.index)
+
+        if contractor_col is not None:
+            analysis_rows &= merged[contractor_col].astype(str).str.strip().str.lower() == "active"
+            logger.debug(f"Client SC filter: applied contractor_status == Active")
+        else:
+            logger.warning("Client SC filter: contractor_status column not found, skipping that filter")
+
+        if client_col is not None:
+            analysis_rows &= merged[client_col].astype(str).str.strip().str.lower() == "active"
+            logger.debug(f"Client SC filter: applied client_status == Active")
+        else:
+            logger.warning("Client SC filter: client_status column not found, skipping that filter")
+
+        # Filter out Cancelled statuses from both SC and D365 status columns
+        analysis_rows &= merged[sc_status_col_merged].fillna("").astype(str).str.strip().str.lower() != "cancelled"
+        analysis_rows &= merged[d365_status_col_merged].fillna("").astype(str).str.strip().str.lower() != "cancelled"
+
+        if analysis_rows.any():
+            sc_statuses = merged.loc[analysis_rows, sc_status_col_merged].fillna("").astype(str)
+            d365_statuses = merged.loc[analysis_rows, d365_status_col_merged].fillna("").astype(str)
+            differences = (sc_statuses != d365_statuses).sum()
+        else:
+            differences = 0
     else:
-        differences = 0
-    
+        # Count differences (replicate "Is it the same?" formula: =sc_status=d365_status)
+        valid_rows = merged[d365_status_col_merged].notna()
+        if valid_rows.any():
+            sc_statuses = merged.loc[valid_rows, sc_status_col_merged].fillna("").astype(str)
+            d365_statuses = merged.loc[valid_rows, d365_status_col_merged].fillna("").astype(str)
+            differences = (sc_statuses != d365_statuses).sum()
+        else:
+            differences = 0
+
     logger.info(f"SC sheet analysis for {report_type} complete - Differences: {differences}, Not found: {not_found}")
-    
+
     return {
         "differences": int(differences),
         "not_found": int(not_found)
@@ -257,13 +288,11 @@ def generate_email_report():
     # Get the dated comparison directory
     comparison_dir = get_dated_comparison_dir()
     
-    # Define comparison types and their file paths
+    # Define comparison types and their file paths — derived from central config
+    # so adding a new report type to REPORT_TYPES is automatically picked up here
     comparisons = {
-        "Client": comparison_dir / "Client_Comparison.xlsx",
-        "WCB": comparison_dir / "WCB_Comparison.xlsx",
-        "Accreditation": comparison_dir / "Accreditation_Comparison.xlsx",
-        "Critical_Document": comparison_dir / "Critical_Document_Comparison.xlsx",
-        "ESG": comparison_dir / "ESG_Comparison.xlsx"
+        REPORT_TYPE_DISPLAY_NAMES[rt]: comparison_dir / f"{REPORT_TYPE_DISPLAY_NAMES[rt]}_Comparison.xlsx"
+        for rt in REPORT_TYPES
     }
     
     # Check which files exist
@@ -324,7 +353,10 @@ def generate_email_report():
         }
         
         logger.info(f"Completed {name} analysis - SC differences: {sc_stats['differences']}, SC not found: {sc_stats['not_found']}, D365 not found: {d365_stats['total_not_found']}, Status types: {len(d365_stats['status_breakdown'])}")
-        print(f"  [OK] SC differences: {sc_stats['differences']}")
+        if name == "Client":
+            print(f"  [OK] SC differences (filtered: Active status, no Cancelled): {sc_stats['differences']}")
+        else:
+            print(f"  [OK] SC differences: {sc_stats['differences']}")
         print(f"  [OK] D365 not found: {d365_stats['total_not_found']}")
         print(f"  [OK] Status types: {len(d365_stats['status_breakdown'])}\n")
     
@@ -336,9 +368,15 @@ def generate_email_report():
     
     email_lines = []
     
-    # Process in the order: ESG, Critical_Document, Client, WCB, Accreditation
-    order = ["ESG", "Critical_Document", "Client", "WCB", "Accreditation"]
+    # Process in reverse config order (ESG → Critical_Document → Client → WCB → Accreditation)
+    order = [REPORT_TYPE_DISPLAY_NAMES[rt] for rt in reversed(REPORT_TYPES)]
     
+    # Email-specific section headers (may differ from file/config display names)
+    _email_section_names = {
+        "Client": "Client Specific",
+        "Critical_Document": "Critical Document",
+    }
+
     for name in order:
         if name not in results:
             continue
@@ -346,14 +384,7 @@ def generate_email_report():
         data = results[name]
         
         # Section header with display name
-        if name == "Client":
-            display_name = "Client Specific"
-        elif name == "Critical_Document":
-            display_name = "Critical Document"
-        elif name == "ESG":
-            display_name = "ESG"
-        else:
-            display_name = name
+        display_name = _email_section_names.get(name, name)
         
         # Add blank line between sections (not before the first one)
         if email_lines:
@@ -366,10 +397,14 @@ def generate_email_report():
         sc_not_found = data["sc"]["not_found"]
         
         email_lines.append("• SC:")
-        if sc_not_found > 0:
-            email_lines.append(f"\t○ {sc_diff} differences between dynamics and SafeContractor, {sc_not_found} Not found")
-        else:
+        if name == "Client":
+            # Client Specific: filtered count only, no "not found", no filter note
             email_lines.append(f"\t○ {sc_diff} differences between dynamics and SafeContractor")
+        else:
+            if sc_not_found > 0:
+                email_lines.append(f"\t○ {sc_diff} differences between dynamics and SafeContractor, {sc_not_found} Not found")
+            else:
+                email_lines.append(f"\t○ {sc_diff} differences between dynamics and SafeContractor")
         
         # D365 statistics
         email_lines.append("")
@@ -428,4 +463,5 @@ def main():
 
 
 if __name__ == "__main__":
+    import sys
     sys.exit(main())

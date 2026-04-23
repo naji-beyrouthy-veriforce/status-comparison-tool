@@ -1,3 +1,6 @@
+# Sensitive configuration — copy secrets.env.template to secrets.env and fill in values
+secrets.env
+
 # Python
 __pycache__/
 *.py[cod]

@@ -1,7 +1,7 @@
 # Project Memory - Status Comparison Tool
-**Last Updated:** April 2, 2026  
+**Last Updated:** April 23, 2026  
 **Status:** Fully Functional - Automated Redash Integration  
-**Code Quality:** Clean - Technical Debt Resolved
+**Code Quality:** Clean
 
 ---
 
@@ -14,6 +14,15 @@
 - Comparison logic MUST use correct column per report type
 - This is CORRECT per business requirements
 - Defined as `CLIENT_STATUS_COLUMN = "case"` in config.py
+- `CASE_COLUMN_REPORT_TYPES = frozenset({"client", "critical_document", "esg"})` — all three use `case`
+
+### Client Specific SC Difference Count (Special Filtering)
+**DO NOT REMOVE this filtering from `analyze_sc_sheet()` in `email_report.py`:**
+- Only rows where `contractor_status == "Active"` AND `client_status == "Active"` are counted
+- Rows where the SC `case` column OR the D365 status is `"Cancelled"` are excluded
+- "Not found" rows (no matching D365 record) **are included** in the difference count — they count as a mismatch
+- This filtering applies **only to the Client report** — all other report types use unfiltered counts
+- The email output line for Client SC is: `○ N differences between dynamics and SafeContractor` (no "not found" shown separately)
 
 ### Deduplication Before Merge
 - `drop_duplicates(subset=['clean_id'], keep='first')` MUST be applied before any merge
@@ -31,21 +40,39 @@
 
 Compare status records between Dynamics 365 (D365) and SafeContractor (SC) for five report types: Client, WCB, Accreditation, Critical Document, ESG.
 
-**Architecture:** `config.py` → `utils.py` → `main.py` / `email_report.py` / `redash_api.py` → `gui_app.py`
+**Architecture:** `config.py` → `utils.py` → `main.py` / `email_report.py` / `redash_api.py` / `dynamics_api.py` → `gui_app.py`
 
 **Key Components:**
 | File | Purpose |
-|------|---------|
-| `config.py` | All constants, paths, patterns, `Messages` class, `setup_logging()`, Redash config |
+|------|------|
+| `config.py` | All constants, paths, patterns, `Messages` class, `setup_logging()`, Redash + D365 config |
 | `utils.py` | Reusable utilities: UUID cleaning, column detection, file validation, Excel formatting |
 | `main.py` | Core logic: ID extraction, Excel comparison generation, automated workflow orchestration |
 | `redash_api.py` | Redash API integration: query execution, polling, result downloading |
+| `dynamics_api.py` | D365 Web API: OAuth2 auth, saved-view download, column name resolution, pagination |
 | `email_report.py` | Email report: replicates XLOOKUP via merge, formats status differences |
 | `gui_app.py` | 3-tab GUI: Upload → Run → Results (dark mode, drag & drop) |
 
 ---
 
 ## Complete Workflow
+
+### Step 0 (Optional): Automated D365 Download
+If `D365_TENANT_ID`, `D365_CLIENT_ID`, and `D365_CLIENT_SECRET` are all set, `run_automated_workflow()` automatically downloads D365 files before Step 1 via `run_all_d365_downloads()` in `dynamics_api.py`.
+
+**How it works:**
+1. Authenticates via OAuth2 client credentials flow → gets Bearer token (~60 min validity)
+2. For each configured report type, fetches saved view's `layoutxml` to get column schema names
+3. Calls D365 attribute metadata API to resolve schema names → display names
+4. Queries the view via `?savedQuery={view_id}` with pagination (`@odata.nextLink`)
+5. Prefers `@OData.Community.Display.V1.FormattedValue` annotations (human-readable labels, not integer codes)
+6. Saves each report as Excel to `input/dynamics/<report_type>_d365.xlsx`
+
+If credentials are **not** set, the step is silently skipped and existing files in `input/dynamics/` are used instead (manual upload via Tab 1).
+
+**To use:** Set `D365_TENANT_ID`, `D365_CLIENT_ID`, `D365_CLIENT_SECRET` in `secrets.env` or the `.bat` launchers. Contact IT for an Azure App Registration if one doesn't exist.
+
+---
 
 ### Step 1: Upload D365 Files (GUI Tab 1)
 **Input:** One or more Excel files from Dynamics 365 (any combination of the 5 report types)
@@ -87,7 +114,7 @@ Compare status records between Dynamics 365 (D365) and SafeContractor (SC) for f
 2. Creates `clean_id` columns (lowercase UUID extraction)
 3. Creates 2-sheet Excel workbooks per report type with XLOOKUP formulas
 4. Applies red header formatting, auto-filters
-5. Saves to `output/comparison_YYYY-MM-DD/`
+5. Saves to `output/comparison_YYYY-MM-DD_HH-MM-SS/`
 6. Auto-generates email report via merge-based XLOOKUP replication
 
 ### Step 3: Results (GUI Tab 3)
@@ -108,15 +135,15 @@ Column placement varies by report type:
 **Output (example — only uploaded types appear):**
 ```
 output/
-├── comparison_YYYY-MM-DD/
+├── comparison_YYYY-MM-DD_HH-MM-SS/     ← new timestamped folder per run
 │   ├── Accreditation_Comparison.xlsx   (if uploaded)
 │   ├── WCB_Comparison.xlsx             (if uploaded)
 │   ├── Client_Comparison.xlsx          (if uploaded)
 │   ├── Critical_Document_Comparison.xlsx (if uploaded)
 │   └── ESG_Comparison.xlsx             (if uploaded)
 ├── query_ids/
-│   ├── accreditation_ids.sql.txt       (if uploaded)
-│   └── wcb_ids.sql.txt                 (if uploaded)
+│   ├── accreditation_ids.sql.txt       (if uploaded — overwritten each run)
+│   └── wcb_ids.sql.txt                 (if uploaded — overwritten each run)
 └── email_report.txt
 ```
 
@@ -133,7 +160,7 @@ output/
 ```python
 # 1. Find CORRECT status column (CRITICAL!)
 sc_status_col = find_sc_status_column(df_sc, id_col_sc, report_type)
-# → "case" for client, "status" for WCB/Accreditation
+# → "case" for client/critical_document/esg, "status" for WCB/Accreditation
 d365_status_col = find_column_by_keywords(df_d365.columns, ("status", "reason"))
 
 # 2. Clean IDs for matching
@@ -146,9 +173,13 @@ df_d365_dedup = df_d365_copy.drop_duplicates(subset=['clean_id'], keep='first')
 # 4. Merge to replicate XLOOKUP
 merged = df_sc_copy.merge(df_d365_dedup[['clean_id', d365_status_col]], on='clean_id', how='left')
 
-# 5. Count Not Found + Differences
-not_found = merged[d365_status_col_merged].isna().sum()
+# 5. For CLIENT only: filter Active contractor_status + client_status, exclude Cancelled
+#    analysis_rows starts as ALL rows (not just found) so not-found count as differences
+#    For all other report types: only count rows where D365 status is not null
+
+# 6. Count differences
 differences = (sc_statuses != d365_statuses).sum()
+not_found = merged[d365_status_col_merged].isna().sum()  # reported for non-client only
 ```
 
 ### D365 Sheet Analysis
@@ -175,7 +206,7 @@ status_breakdown = not_found_df[status_reason_col].value_counts().to_dict()
 | `extract_and_save_ids(report_types=None)` | Extracts UUIDs from D365 files (WCB/Accreditation only, filtered to uploaded types) |
 | `create_comparison_excel(report_type, df_d365, df_sc)` | Generates 2-sheet workbooks with XLOOKUP formulas |
 | `generate_comparisons(report_types=None)` | Orchestrates comparisons for uploaded types + triggers email report |
-| `run_automated_workflow()` | Full pipeline: detect types → extract IDs → Redash queries → comparisons |
+| `run_automated_workflow()` | Full pipeline: (optional D365 download →) extract IDs → Redash queries → comparisons |
 | `main()` | Entry point: automated mode (if API key set) or manual fallback |
 
 ### email_report.py
@@ -238,13 +269,22 @@ status_breakdown = not_found_df[status_reason_col].value_counts().to_dict()
 | Item | Purpose |
 |------|---------|
 | Directory paths | `BASE_DIR`, `INPUT_DIR`, `OUTPUT_DIR`, `DYNAMICS_DIR`, `REDASH_DIR`, `QUERY_IDS_DIR`, `LOG_DIR` |
-| `get_dated_comparison_dir()` | Returns `output/comparison_YYYY-MM-DD/` path |
+| `reset_run_comparison_dir()` | Stamps a fresh `comparison_YYYY-MM-DD_HH-MM-SS` folder for this run; call at start of each `run_automated_workflow()` |
+| `get_dated_comparison_dir()` | Returns the cached run folder. In standalone mode (no cache), finds the most-recently-modified `comparison_*` folder in `output/` |
 | File patterns | `D365_PATTERNS`, `SC_PATTERNS`, `D365_FILES`, `SC_FILES` |
 | Validation | `ALLOWED_FILE_EXTENSIONS`, `MIN_FILE_SIZE_BYTES` |
 | `UUID_PATTERN` | Compiled regex for UUID matching |
 | Excel formatting | `HIGHLIGHT_HEADERS`, `HEADER_FILL`, `HEADER_FONT` |
-| `CLIENT_STATUS_COLUMN` | `"case"` — the status column for client reports |
+| `CLIENT_STATUS_COLUMN` | `"case"` — the status column for client/critical_document/esg reports |
+| `CASE_COLUMN_REPORT_TYPES` | `frozenset({"client", "critical_document", "esg"})` |
 | Redash config | `REDASH_BASE_URL`, `REDASH_API_KEY`, `REDASH_QUERY_IDS`, polling settings |
+| D365 Web API config | `D365_ORG_URL`, `D365_TENANT_ID`, `D365_CLIENT_ID`, `D365_CLIENT_SECRET` (from env vars) |
+| `D365_VIEW_IDS` | Per-report-type saved view GUIDs (set in `config.py` or via env vars) |
+| `D365_ENTITY` | `"incidents"` — OData entity set name (plural) |
+| `D365_ENTITY_LOGICAL_NAME` | `"incident"` — used in metadata API queries |
+| `D365_API_VERSION` | `"v9.2"` |
+| `D365_PAGE_SIZE` | `5000` — max records per OData page |
+| `D365_KNOWN_FIELD_NAMES` | Hardcoded fallback schema→display mappings (e.g. `statuscode` → `"Status Reason"`) |
 | `setup_logging()` | Rotating file handler with console/file output options |
 | `Messages` class | All UI strings and emoji indicators centralized |
 
@@ -265,8 +305,8 @@ status_breakdown = not_found_df[status_reason_col].value_counts().to_dict()
 
 ```python
 # File Patterns (in config.py)
-D365_PATTERNS = {"accreditation": "accreditation", "wcb": "wcb", "client": ["client", "cs"]}
-SC_PATTERNS = {"accreditation": "accreditation", "wcb": "wcb", "client": ["client", "cs"]}
+D365_PATTERNS = {"accreditation": "accreditation", "wcb": "wcb", "client": ["client", "cs"],
+                 "critical_document": ["critical", "cd"], "esg": "esg"}
 
 # UUID Regex (compiled)
 UUID_PATTERN = re.compile(r'[0-9a-fA-F]{8}-...-[0-9a-fA-F]{12}')
@@ -275,13 +315,15 @@ UUID_PATTERN = re.compile(r'[0-9a-fA-F]{8}-...-[0-9a-fA-F]{12}')
 HIGHLIGHT_HEADERS = frozenset(['global_alcumus_id', 'global alcumus id', 'status',
     'd365 status', 'sc status', 'is it the same?', 'status reason', 'case'])
 
-# Client Status Column
+# Client/CD/ESG Status Column
 CLIENT_STATUS_COLUMN = "case"
+CASE_COLUMN_REPORT_TYPES = frozenset({"client", "critical_document", "esg"})
 
 # Redash Configuration
 REDASH_BASE_URL = "https://redash.cognibox.net"
 REDASH_API_KEY = os.environ.get("REDASH_API_KEY", "")
-REDASH_QUERY_IDS = {"accreditation": 1460, "wcb": 1281, "client": 1277}
+REDASH_QUERY_IDS = {"accreditation": 1460, "wcb": 1281, "client": 1277,
+                    "critical_document": 1464, "esg": 1465}
 REDASH_POLL_INTERVAL = 3   # seconds between job status checks
 REDASH_POLL_TIMEOUT = 300  # max seconds to wait for query completion
 
@@ -295,11 +337,15 @@ FILE_SAVE_RETRY_DELAY_SECONDS = 1
 ## Data Flow
 
 ```
+[Optional — if D365 credentials set]
+dynamics_api.py → OAuth2 token → D365 Web API → input/dynamics/*.xlsx
+
+[Always]
 D365 Excel(s) → [Tab 1 Upload] → input/dynamics/  (any subset of 5 types)
              → [Tab 2 Run] → get_uploaded_report_types() → active_types list
                            → extract_and_save_ids(active_types) → output/query_ids/*.sql.txt
                            → run_all_redash_queries(active_types) → input/redash/*.xlsx
-                           → generate_comparisons(active_types) → output/comparison_YYYY-MM-DD/*.xlsx
+                           → generate_comparisons(active_types) → output/comparison_YYYY-MM-DD_HH-MM-SS/*.xlsx
                            → generate_email_report() → output/email_report.txt
              → [Tab 3 Results] → Email report display + clipboard copy
 ```
@@ -368,8 +414,10 @@ status-comparaison-tool/
 2. Add filenames to `D365_FILES` and `SC_FILES` in `config.py`
 3. Add to `REPORT_TYPES` list in `config.py`
 4. Add Redash query ID to `REDASH_QUERY_IDS` in `config.py`
-5. Add D365 key to `uploaded_files` dict in `gui_app.py`
-6. Add status indicator row in `setup_d365_tab()` in `gui_app.py`
+5. Add D365 view ID to `D365_VIEW_IDS` in `config.py` (for automated D365 download)
+6. If the new type uses `case` as status column, add to `CASE_COLUMN_REPORT_TYPES` in `config.py`
+7. Add D365 key to `uploaded_files` dict in `gui_app.py`
+8. Add status indicator row in `setup_d365_tab()` in `gui_app.py`
 
 ### Change Column Detection
 - Edit keyword tuples in `find_column_by_keywords()` calls
@@ -392,17 +440,37 @@ status-comparaison-tool/
 | Redash 403/401 | Bad API key | Check `REDASH_API_KEY` env var |
 | Redash connection error | VPN not connected | Connect to VPN, verify with `verify_connection()` |
 | 0 differences in email | Wrong status column | Verify `find_sc_status_column()` returns correct column |
+| D365 download: 401 | Bad client credentials | Check `D365_CLIENT_ID` / `D365_CLIENT_SECRET` env vars |
+| D365 download: 403 | App Registration missing D365 role | Contact IT to assign a D365 Security Role to the App Registration |
+| D365 download: 0 rows | Wrong view ID | Open the view in D365 browser → copy `viewid=` from URL → update `D365_VIEW_IDS` |
+| D365 download: missing columns | schema name not in metadata | Add to `D365_KNOWN_FIELD_NAMES` in `config.py` as fallback |
+| D365 download skipped | Credentials not set | Set `D365_TENANT_ID`, `D365_CLIENT_ID`, `D365_CLIENT_SECRET` in `secrets.env` |
 
 ---
 
 ## Quick Start
 
+**Manual D365 upload (default):**
 ```bash
 Run_GUI.bat
-# Tab 1: Upload D365 files (drag & drop)
+# Tab 1: Drag & drop D365 Excel exports
 # Tab 2: Click "Run Full Comparison" (extracts IDs → runs Redash → generates comparisons)
 # Tab 3: View email report → copy to clipboard
 ```
+
+**Automated D365 download (optional):**
+```bash
+# Fill in D365_TENANT_ID, D365_CLIENT_ID, D365_CLIENT_SECRET in secrets.env
+Run_GUI.bat
+# Tab 2: Click "Run Full Comparison"
+# Step 0 auto-downloads D365 files before running the rest of the pipeline
+```
+
+**Standalone launchers:**
+- `Run_CLI.bat` — automated mode without GUI
+- `Run_D365_Download.bat` — download D365 files only (no comparison)
+- `Run_Email_Report.bat` — regenerate email report from existing comparison files
+
 **Requirements:** VPN connected, `REDASH_API_KEY` env var set (batch files handle this)
 
 ---
@@ -423,31 +491,17 @@ Run_GUI.bat
 
 | Date | Change | Impact |
 |------|--------|--------|
+| Apr 23, 2026 | Client SC: filter Active contractor/client_status, exclude Cancelled, include not-found in count | Client difference count now matches business expectation |
+| Apr 23, 2026 | Timestamped output folders: `comparison_YYYY-MM-DD_HH-MM-SS` per run | Each run gets its own folder; no overwriting previous results |
+| Apr 23, 2026 | `reset_run_comparison_dir()` + `get_dated_comparison_dir()` standalone fallback (most-recent folder) | `Run_Email_Report.bat` now reads from the last real run automatically |
+| Apr 23, 2026 | Removed dead imports (`Path`, `sys`) from `email_report.py` | Minor cleanup |
+| Mar 12, 2026 | D365 Web API module (`dynamics_api.py`): OAuth2, saved-view download, column resolution, pagination | Fully automated D365 file download (optional — requires Azure App Registration) |
 | Mar 12, 2026 | Code cleanup: removed unused imports, dead code, duplicate variables, stale messages | No behavior change |
 | Mar 12, 2026 | Redash automation: one-click pipeline via `redash_api.py` | Eliminated manual Redash copy/paste |
 | Feb 24, 2026 | Partial file support: any combination of report types works | Upload/generate with 1-3 files |
 | Feb 18, 2026 | Centralized `find_sc_status_column()`, removed duplicate logic | ~100 lines eliminated |
 | Feb 16, 2026 | SC column detection fix: client uses `case`, not `status` | Email counts now match Excel |
 | Feb 11, 2026 | Deduplication fix: `keep='first'` before merge | WCB: 28→25 differences (3 false positives fixed) |
-
----
-
-## ⚠️ FOR AI ASSISTANTS
-
-**BEFORE any change:**
-1. Read CRITICAL BUSINESS LOGIC section
-2. Read Complete Workflow section
-3. Read Key Design Decisions section
-
-**Critical reminders:**
-- Email report replicates XLOOKUP via merge with `keep='first'` deduplication
-- Client uses `case` column (NOT `status`) — CORRECT per business requirements
-- `find_sc_status_column()` in utils.py is the single source of truth for SC status column selection
-- Redash workflow is fully automated — no manual steps required
-- Two-sheet Excel design is intentional (bidirectional comparison)
-- `create_comparison_excel()` takes 3 args: `(report_type, df_d365, df_sc)` — no `include_qual_url`
-
-**Update this document when significant code changes are made.**
 
 ---
 

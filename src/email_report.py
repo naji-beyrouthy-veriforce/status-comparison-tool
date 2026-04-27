@@ -129,6 +129,8 @@ def analyze_sc_sheet(df_sc, df_d365, report_type="client"):
     if report_type.lower() == "client":
         contractor_col = next((c for c in merged.columns if c.lower() == "contractor_status"), None)
         client_col = next((c for c in merged.columns if c.lower() == "client_status"), None)
+        contractor_qf_col = next((c for c in merged.columns if c.lower() == "contractor_qf_active"), None)
+        client_qf_col = next((c for c in merged.columns if c.lower() == "client_qf_active"), None)
 
         # Start from all rows (including "not found") so they count as differences
         analysis_rows = pd.Series([True] * len(merged), index=merged.index)
@@ -145,9 +147,20 @@ def analyze_sc_sheet(df_sc, df_d365, report_type="client"):
         else:
             logger.warning("Client SC filter: client_status column not found, skipping that filter")
 
-        # Filter out Cancelled statuses from both SC and D365 status columns
+        if contractor_qf_col is not None:
+            analysis_rows &= merged[contractor_qf_col].astype(str).str.strip() == "1"
+            logger.debug(f"Client SC filter: applied contractor_qf_active == 1")
+        else:
+            logger.warning("Client SC filter: contractor_qf_active column not found, skipping that filter")
+
+        if client_qf_col is not None:
+            analysis_rows &= merged[client_qf_col].astype(str).str.strip() == "1"
+            logger.debug(f"Client SC filter: applied client_qf_active == 1")
+        else:
+            logger.warning("Client SC filter: client_qf_active column not found, skipping that filter")
+
+        # Filter out Cancelled from SC status column only (not D365)
         analysis_rows &= merged[sc_status_col_merged].fillna("").astype(str).str.strip().str.lower() != "cancelled"
-        analysis_rows &= merged[d365_status_col_merged].fillna("").astype(str).str.strip().str.lower() != "cancelled"
 
         if analysis_rows.any():
             sc_statuses = merged.loc[analysis_rows, sc_status_col_merged].fillna("").astype(str)

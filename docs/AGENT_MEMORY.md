@@ -19,10 +19,12 @@
 ### Client Specific SC Difference Count (Special Filtering)
 **DO NOT REMOVE this filtering from `analyze_sc_sheet()` in `email_report.py`:**
 - Only rows where `contractor_status == "Active"` AND `client_status == "Active"` are counted
-- Rows where the SC `case` column OR the D365 status is `"Cancelled"` are excluded
+- Only rows where `contractor_qf_active == 1` AND `client_qf_active == 1` are counted
+- Rows where the SC `case` column is `"Cancelled"` are excluded (D365 status is NOT filtered)
 - "Not found" rows (no matching D365 record) **are included** in the difference count — they count as a mismatch
 - This filtering applies **only to the Client report** — all other report types use unfiltered counts
 - The email output line for Client SC is: `○ N differences between dynamics and SafeContractor` (no "not found" shown separately)
+- All four filter columns warn in the log and are skipped gracefully if not found in the data
 
 ### Deduplication Before Merge
 - `drop_duplicates(subset=['clean_id'], keep='first')` MUST be applied before any merge
@@ -491,6 +493,7 @@ Run_GUI.bat
 
 | Date | Change | Impact |
 |------|--------|--------|
+| Apr 27, 2026 | Client SC filter: replaced D365 Cancelled exclusion with `contractor_qf_active == 1` + `client_qf_active == 1` filters | Updated difference count logic |
 | Apr 23, 2026 | Client SC: filter Active contractor/client_status, exclude Cancelled, include not-found in count | Client difference count now matches business expectation |
 | Apr 23, 2026 | Timestamped output folders: `comparison_YYYY-MM-DD_HH-MM-SS` per run | Each run gets its own folder; no overwriting previous results |
 | Apr 23, 2026 | `reset_run_comparison_dir()` + `get_dated_comparison_dir()` standalone fallback (most-recent folder) | `Run_Email_Report.bat` now reads from the last real run automatically |

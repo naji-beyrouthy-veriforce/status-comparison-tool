@@ -148,14 +148,22 @@ def analyze_sc_sheet(df_sc, df_d365, report_type="client"):
             logger.warning("Client SC filter: client_status column not found, skipping that filter")
 
         if contractor_qf_col is not None:
-            analysis_rows &= merged[contractor_qf_col].astype(str).str.strip() == "1"
-            logger.debug(f"Client SC filter: applied contractor_qf_active == 1")
+            qf_vals = merged[contractor_qf_col]
+            active_mask = (
+                (pd.to_numeric(qf_vals, errors='coerce') == 1) |
+                (qf_vals.astype(str).str.strip().str.lower() == "true")
+            )
+            analysis_rows &= active_mask.fillna(False)
         else:
             logger.warning("Client SC filter: contractor_qf_active column not found, skipping that filter")
 
         if client_qf_col is not None:
-            analysis_rows &= merged[client_qf_col].astype(str).str.strip() == "1"
-            logger.debug(f"Client SC filter: applied client_qf_active == 1")
+            qf_vals = merged[client_qf_col]
+            active_mask = (
+                (pd.to_numeric(qf_vals, errors='coerce') == 1) |
+                (qf_vals.astype(str).str.strip().str.lower() == "true")
+            )
+            analysis_rows &= active_mask.fillna(False)
         else:
             logger.warning("Client SC filter: client_qf_active column not found, skipping that filter")
 

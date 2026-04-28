@@ -493,6 +493,7 @@ Run_GUI.bat
 
 | Date | Change | Impact |
 |------|--------|--------|
+| Apr 28, 2026 | Fixed `contractor_qf_active`/`client_qf_active` comparison: Excel stores as `float64` (`0.0`/`1.0`); use `pd.to_numeric(col, errors='coerce') == 1`. Confirmed: 354 differences (was 0) | Client SC count now correct |
 | Apr 27, 2026 | Client SC filter: replaced D365 Cancelled exclusion with `contractor_qf_active == 1` + `client_qf_active == 1` filters | Updated difference count logic |
 | Apr 23, 2026 | Client SC: filter Active contractor/client_status, exclude Cancelled, include not-found in count | Client difference count now matches business expectation |
 | Apr 23, 2026 | Timestamped output folders: `comparison_YYYY-MM-DD_HH-MM-SS` per run | Each run gets its own folder; no overwriting previous results |

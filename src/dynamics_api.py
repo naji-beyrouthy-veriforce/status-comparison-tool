@@ -23,14 +23,14 @@ Approach:
     1. Authenticate via OAuth2 client credentials → get Bearer token
     2. Fetch the saved view's layoutxml to discover its column schema names
     3. Fetch D365 entity attribute metadata to map schema names → display names
-    4. Query the view via ?savedQuery={view_id} with pagination
+    4. Fetch FetchXML from the view, execute it against the incidents entity with pagination
     5. Prefer formatted annotation values (e.g. "Status Reason" text, not integer codes)
     6. Save each report as Excel to input/dynamics/
 
 Note: This module never modifies any D365 data. It is strictly read-only.
 """
 
-import time
+import urllib.parse
 import requests
 import pandas as pd
 import xml.etree.ElementTree as ET
@@ -176,6 +176,29 @@ def verify_connection():
 # COLUMN NAME RESOLUTION  (schema name → display name)
 # ============================================================================
 
+def _get_fetchxml(view_id, token):
+    """
+    Fetch the FetchXML query string from a view.
+    Tries savedqueries (system/public views) first, then userqueries (personal views, viewType=4230).
+
+    Returns:
+        str: The FetchXML string for the view.
+    """
+    for entity in ("savedqueries", "userqueries"):
+        response = requests.get(
+            f"{_API_BASE}/{entity}({view_id})?$select=fetchxml",
+            headers=_get_headers(token),
+            timeout=30,
+        )
+        if response.status_code == 404:
+            continue
+        response.raise_for_status()
+        return response.json()["fetchxml"]
+    raise requests.HTTPError(
+        f"View {view_id} not found in savedqueries or userqueries"
+    )
+
+
 def _get_view_schema_columns(view_id, token):
     """
     Fetch a saved view's layoutxml and return the list of schema column names
@@ -185,17 +208,26 @@ def _get_view_schema_columns(view_id, token):
         list[str]: Schema column names (e.g. ['cr9cc_globalalcumusid', 'statuscode', ...])
                    Empty list if the view has no layoutxml.
     """
-    response = requests.get(
-        f"{_API_BASE}/savedqueries({view_id})?$select=layoutxml,returnedtypecode",
-        headers=_get_headers(token),
-        timeout=30,
-    )
-    response.raise_for_status()
-    data = response.json()
+    data = None
+    for entity in ("savedqueries", "userqueries"):
+        response = requests.get(
+            f"{_API_BASE}/{entity}({view_id})?$select=layoutxml,returnedtypecode",
+            headers=_get_headers(token),
+            timeout=30,
+        )
+        if response.status_code == 404:
+            continue
+        response.raise_for_status()
+        data = response.json()
+        break
+
+    if data is None:
+        logger.warning(f"View {view_id} not found in savedqueries or userqueries — using fallback names")
+        return []
 
     layout_xml = data.get("layoutxml", "")
     if not layout_xml:
-        logger.warning(f"View {view_id} has no layoutxml (may be a personal view — try systemuserqueries)")
+        logger.warning(f"View {view_id} has no layoutxml")
         return []
 
     try:
@@ -391,10 +423,12 @@ def run_single_d365_download(report_type, view_id, token):
     resolved = sum(1 for k in rename_map if k != rename_map.get(k, k))
     print(f"  {Messages.SUCCESS} {len(rename_map)} column name mappings ready")
 
-    # 2. Fetch data via saved view
+    # 2. Fetch data via saved view using FetchXML
     print(f"  📡 Fetching rows from D365 view {view_id[:8]}......")
     headers = _get_headers(token)
-    url = f"{_API_BASE}/{D365_ENTITY}?savedQuery={view_id}"
+    fetchxml = _get_fetchxml(view_id, token)
+    encoded_fetchxml = urllib.parse.quote(fetchxml)
+    url = f"{_API_BASE}/{D365_ENTITY}?fetchXml={encoded_fetchxml}"
 
     records = _fetch_all_pages(url, headers)
 

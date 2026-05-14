@@ -19,7 +19,7 @@ import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
 
 # Import configuration and utilities
-from src.config import INPUT_DIR, OUTPUT_DIR, DYNAMICS_DIR, REDASH_DIR, QUERY_IDS_DIR, D365_FILES, SC_FILES, REDASH_API_KEY, D365_PATTERNS, SC_PATTERNS, ALLOWED_FILE_EXTENSIONS, Messages, setup_logging, get_dated_comparison_dir, REPORT_TYPE_DISPLAY_NAMES
+from src.config import OUTPUT_DIR, DYNAMICS_DIR, REDASH_DIR, D365_FILES, SC_FILES, REDASH_API_KEY, D365_TENANT_ID, D365_CLIENT_ID, D365_CLIENT_SECRET, D365_VIEW_IDS, D365_PATTERNS, ALLOWED_FILE_EXTENSIONS, Messages, setup_logging, get_dated_comparison_dir, REPORT_TYPE_DISPLAY_NAMES
 
 # Import main processing functions
 from main import extract_and_save_ids, generate_comparisons, run_automated_workflow
@@ -183,8 +183,8 @@ class ComparisonApp:
         # Configure drag and drop
         bulk_drop.drop_target_register(DND_FILES)
         bulk_drop.dnd_bind("<<Drop>>", lambda e: self.handle_bulk_drop(e, "d365"))
-        bulk_drop.dnd_bind("<<DragEnter>>", lambda e, f=bulk_drop: self.on_drag_enter(e, f, "d365"))
-        bulk_drop.dnd_bind("<<DragLeave>>", lambda e, f=bulk_drop: self.on_drag_leave(e, f, "d365"))
+        bulk_drop.dnd_bind("<<DragEnter>>", lambda e, f=bulk_drop: self.on_drag_enter(e, f))
+        bulk_drop.dnd_bind("<<DragLeave>>", lambda e, f=bulk_drop: self.on_drag_leave(e, f))
 
         tk.Label(
             bulk_drop,
@@ -265,7 +265,7 @@ class ComparisonApp:
             justify=tk.LEFT,
         ).pack(anchor=tk.W, padx=20, pady=(0, 10))
 
-        # API key status indicator
+        # Redash API key status
         api_status = "✓ Redash API key configured" if REDASH_API_KEY else "❌ REDASH_API_KEY environment variable not set"
         api_color = self.colors['accent_green'] if REDASH_API_KEY else "#ef4444"
         tk.Label(
@@ -273,6 +273,26 @@ class ComparisonApp:
             text=api_status,
             bg=self.colors['bg_card'],
             fg=api_color,
+            font=("Segoe UI", 9),
+        ).pack(anchor=tk.W, padx=20, pady=(0, 4))
+
+        # D365 API status
+        d365_creds_ok = bool(D365_TENANT_ID and D365_CLIENT_ID and D365_CLIENT_SECRET)
+        d365_views_ok = any(vid for vid in D365_VIEW_IDS.values())
+        if d365_creds_ok and d365_views_ok:
+            d365_status = "✓ D365 API configured — files will be downloaded automatically"
+            d365_color = self.colors['accent_green']
+        elif d365_creds_ok:
+            d365_status = "⚠ D365 credentials set but no view IDs configured — D365 download skipped"
+            d365_color = self.colors['accent_orange']
+        else:
+            d365_status = "ℹ D365 credentials not set — upload D365 files manually via Tab 1"
+            d365_color = self.colors['text_secondary']
+        tk.Label(
+            info_frame,
+            text=d365_status,
+            bg=self.colors['bg_card'],
+            fg=d365_color,
             font=("Segoe UI", 9),
         ).pack(anchor=tk.W, padx=20, pady=(0, 15))
 
@@ -432,7 +452,7 @@ class ComparisonApp:
         Returns the key (e.g., 'accreditation_d365') or None if can't classify
         """
         filename_lower = Path(file_path).name.lower()
-        patterns = D365_PATTERNS if file_type_suffix == "d365" else SC_PATTERNS
+        patterns = D365_PATTERNS
 
         # Try to match against each pattern
         for report_type, pattern_list in patterns.items():
@@ -592,11 +612,11 @@ class ComparisonApp:
         
         return file_paths
 
-    def on_drag_enter(self, event, frame, file_type):
+    def on_drag_enter(self, event, frame):
         """Visual feedback when dragging over drop zone"""
         frame.config(bg="#3b5a7f")
 
-    def on_drag_leave(self, event, frame, file_type):
+    def on_drag_leave(self, event, frame):
         """Reset visual when leaving drop zone"""
         frame.config(bg="#2a3f5f")
 
@@ -616,12 +636,14 @@ class ComparisonApp:
                 # Green dot for uploaded
                 indicator.delete("all")
                 indicator.create_oval(2, 2, 8, 8, fill=self.colors['accent_green'], outline="")
-                label.config(text=f"{report_type.replace('_', ' ').title()}: ✓ Uploaded", fg=self.colors['text_primary'])
+                display = REPORT_TYPE_DISPLAY_NAMES.get(report_type, report_type.replace('_', ' ').title())
+                label.config(text=f"{display}: ✓ Uploaded", fg=self.colors['text_primary'])
             else:
                 # Gray dot for not uploaded
                 indicator.delete("all")
                 indicator.create_oval(2, 2, 8, 8, fill="#6b7280", outline="")
-                label.config(text=f"{report_type.replace('_', ' ').title()}: Not uploaded", fg=self.colors['text_secondary'])
+                display = REPORT_TYPE_DISPLAY_NAMES.get(report_type, report_type.replace('_', ' ').title())
+                label.config(text=f"{display}: Not uploaded", fg=self.colors['text_secondary'])
             
             # Force UI update
             indicator.update_idletasks()
